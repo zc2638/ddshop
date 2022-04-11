@@ -1,0 +1,57 @@
+name: Go-release
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.17
+
+      # Cache go build cache, used to speedup go test
+      - name: Setup Golang caches
+        uses: actions/cache@v3
+        with:
+          path: |
+            /go/pkg/.cache/go-build
+            /go/pkg/mod
+          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-golang-
+
+      - name: Setup Golang with cache
+        uses: magnetikonline/action-golang-cache@v2
+        with:
+          go-version: ${{ matrix.go_version }}
+
+      - name: download
+        run: go mod download
+
+      - name: build
+        run: |
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o release/ddshop_darwin_amd64 cmd/ddshop/main.go
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o release/ddshop_darwin_arm64 cmd/ddshop/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o release/ddshop_linux_amd64 cmd/ddshop/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o release/ddshop_linux_arm64 cmd/ddshop/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o release/ddshop_windows_amd64.exe cmd/ddshop/main.go
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/ddshop_linux_amd64
+            release/ddshop_linux_arm64
+            release/ddshop_windows_amd64.exe
+            release/ddshop_darwin_amd64
+            release/ddshop_darwin_arm64
+#       env:
+#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
