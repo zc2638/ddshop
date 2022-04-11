@@ -4,7 +4,7 @@
 
 ## 安装
 ```shell
-go install github.com/zc2638/ddshop/cmd/ddshop
+go install github.com/zc2638/ddshop/cmd/ddshop@latest
 ```
 
 ## 使用
