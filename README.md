@@ -3,6 +3,9 @@
 此程序提供自动化抢购，若非难以存活，请给他人留一些机会！
 
 ## 安装
+### Releases
+从 [Github Release](https://github.com/zc2638/ddshop/releases) 下载
+### 源码
 ```shell
 go install github.com/zc2638/ddshop/cmd/ddshop@latest
 ```
