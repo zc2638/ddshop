@@ -15,6 +15,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -59,25 +60,24 @@ func (s *Session) GetMultiReserveTime() ([]ReserveTime, error) {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	resp, err := req.SetBody(strings.NewReader(params.Encode())).Post(urlPath)
+	req.SetBody(strings.NewReader(params.Encode()))
+	resp, err := s.execute(context.Background(), req, http.MethodPost, urlPath)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
+		return nil, err
 	}
 
-	var reserveTimeList []ReserveTime
-	result := gjson.ParseBytes(resp.Body())
-	for _, reserveTimeInfo := range result.Get("data.0.time.0.times").Array() {
-		if reserveTimeInfo.Get("disableType").Num == 0 {
-			reserveTime := ReserveTime{
-				StartTimestamp: int(reserveTimeInfo.Get("start_timestamp").Num),
-				EndTimestamp:   int(reserveTimeInfo.Get("end_timestamp").Num),
-				SelectMsg:      reserveTimeInfo.Get("select_msg").Str,
-			}
-			reserveTimeList = append(reserveTimeList, reserveTime)
+	reserveTimes := gjson.Get(resp.String(), "data.0.time.0.times").Array()
+	reserveTimeList := make([]ReserveTime, 0, len(reserveTimes))
+	for _, reserveTimeInfo := range reserveTimes {
+		if reserveTimeInfo.Get("disableType").Num != 0 {
+			continue
 		}
+		reserveTime := ReserveTime{
+			StartTimestamp: int(reserveTimeInfo.Get("start_timestamp").Num),
+			EndTimestamp:   int(reserveTimeInfo.Get("end_timestamp").Num),
+			SelectMsg:      reserveTimeInfo.Get("select_msg").Str,
+		}
+		reserveTimeList = append(reserveTimeList, reserveTime)
 	}
 	return reserveTimeList, nil
 }

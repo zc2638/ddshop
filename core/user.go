@@ -15,12 +15,11 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/tidwall/gjson"
 
 	"github.com/sirupsen/logrus"
 )
@@ -101,27 +100,14 @@ func (s *Session) GetUser() error {
 
 	req := s.client.R()
 	req.SetHeader("Host", "sunquan.api.ddxq.mobi")
-	resp, err := req.Get(urlPath)
+	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath)
 	if err != nil {
-		return fmt.Errorf("request failed: %v", err)
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
-	}
-
-	jsonResult := gjson.ParseBytes(resp.Body())
-	switch jsonResult.Get("code").Int() {
-	case -3000:
-		logrus.Warningf("当前人多拥挤, body: %v", jsonResult.Get("msg"))
-		return s.GetUser()
+		return err
 	}
 
 	var userResult UserResult
 	if err := json.Unmarshal(resp.Body(), &userResult); err != nil {
 		return fmt.Errorf("parse response failed: %v, body: %v", err, resp.String())
-	}
-	if userResult.Code != 0 {
-		return fmt.Errorf("request user info failed: %v", resp.String())
 	}
 
 	s.UserID = userResult.Data.UserInfo.Id

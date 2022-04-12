@@ -15,11 +15,14 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -28,9 +31,14 @@ import (
 )
 
 type Option struct {
-	Cookie string
-	Number int
+	Cookie   string
+	Interval int64
 }
+
+var (
+	successCh = make(chan struct{}, 1)
+	errCh     = make(chan error, 1)
+)
 
 func NewRootCommand() *cobra.Command {
 	opt := &Option{}
@@ -43,7 +51,7 @@ func NewRootCommand() *cobra.Command {
 				return errors.New("请输入用户Cookie.\n你可以执行此命令 `ddshop --cookie xxx` 或者 `DDSHOP_COOKIE=xxx ddshop`")
 			}
 
-			session := core.NewSession(opt.Cookie, opt.Number)
+			session := core.NewSession(opt.Cookie, opt.Interval)
 			if err := session.GetUser(); err != nil {
 				return fmt.Errorf("获取用户信息失败: %v", err)
 			}
@@ -51,41 +59,56 @@ func NewRootCommand() *cobra.Command {
 				return err
 			}
 
-			for {
-				if err := Start(session); err != nil {
-					switch err {
-					case core.ErrorNoValidProduct:
-						logrus.Error("购物车中无有效商品，请先前往app添加或勾选！")
-						return err
-					case core.ErrorComplete:
-						logrus.Info("抢购结束")
-						return nil
-					case core.ErrorNoReserveTime:
-						sleepInterval := 3 + rand.Intn(6)
-						logrus.Warningf("暂无可预约的时间，%d 秒后重试！", sleepInterval)
-						time.Sleep(time.Duration(sleepInterval) * time.Second)
-					default:
-						logrus.Error(err)
+			go func() {
+				for {
+					if err := Start(session); err != nil {
+						switch err {
+						case core.ErrorNoValidProduct:
+							logrus.Error("购物车中无有效商品，请先前往app添加或勾选！")
+							errCh <- err
+							return
+						case core.ErrorNoReserveTime:
+							sleepInterval := 3 + rand.Intn(6)
+							logrus.Warningf("暂无可预约的时间，%d 秒后重试！", sleepInterval)
+							time.Sleep(time.Duration(sleepInterval) * time.Second)
+						default:
+							logrus.Error(err)
+						}
+						fmt.Println()
 					}
-					println()
 				}
+			}()
+
+			select {
+			case err := <-errCh:
+				return err
+			case <-successCh:
+				core.LoopRun(10, func() {
+					logrus.Info("抢到菜了，请速去支付!")
+				})
+				return nil
 			}
 		},
 	}
 
 	cookieEnv := os.Getenv("DDSHOP_COOKIE")
 	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
-	cmd.Flags().IntVar(&opt.Number, "number", 1, "设置并行处理数量")
+	cmd.Flags().Int64Var(&opt.Interval, "interval", 100, "设置请求间隔时间(ms)，默认为100")
 	return cmd
 }
 
 func Start(session *core.Session) error {
 	logrus.Info(">>> 获取购物车中有效商品")
+
 	if err := session.GetCart(); err != nil {
 		return fmt.Errorf("检查购物车失败: %v", err)
 	}
 	if len(session.Cart.ProdList) == 0 {
 		return core.ErrorNoValidProduct
+	}
+
+	if err := session.CartAllCheck(); err != nil {
+		return fmt.Errorf("全选购车车商品失败: %v", err)
 	}
 
 	for index, prod := range session.Cart.ProdList {
@@ -112,31 +135,25 @@ func Start(session *core.Session) error {
 		}
 		logrus.Infof("发现可用的配送时段!")
 
+		var wg errgroup.Group
 		for _, reserveTime := range multiReserveTime {
-			session.UpdatePackageOrder(reserveTime)
-
-			for {
-				logrus.Info(">>> 提交订单中")
-				if err := session.CreateOrder(); err != nil {
-					switch err {
-					case core.ErrorInvalidReserveTime:
-						// 选择的时间失效，使用下一个时间段
-						logrus.Warningf("送达时间已失效, [%s]", reserveTime.SelectMsg)
-						break
-					case core.ErrorProductChange:
-						return err
-					default:
-						logrus.Warningf("提交订单失败: %v", err)
-						continue
-					}
+			sess := session.Clone()
+			sess.UpdatePackageOrder(reserveTime)
+			wg.Go(func() error {
+				startTime := time.Unix(int64(sess.PackageOrder.PaymentOrder.ReservedTimeStart), 0).Format("2006/01/02 15:04:05")
+				endTime := time.Unix(int64(sess.PackageOrder.PaymentOrder.ReservedTimeEnd), 0).Format("2006/01/02 15:04:05")
+				timeRange := startTime + "——" + endTime
+				logrus.Infof(">>> 提交订单中, 预约时间段(%s)", timeRange)
+				if err := sess.CreateOrder(context.Background()); err != nil {
+					logrus.Warningf("提交订单(%s)失败: %v", timeRange, err)
+					return err
 				}
 
-				core.LoopRun(10, func() {
-					logrus.Info("抢到菜了，请速去支付!")
-				})
-				return core.ErrorComplete
-			}
+				successCh <- struct{}{}
+				return nil
+			})
 		}
+		_ = wg.Wait()
 		return nil
 	}
 }

@@ -15,12 +15,11 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/tidwall/gjson"
 )
@@ -171,30 +170,17 @@ func (s *Session) CheckOrder() error {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	resp, err := req.SetBody(strings.NewReader(params.Encode())).Post(urlPath)
+	req.SetBody(strings.NewReader(params.Encode()))
+	resp, err := s.execute(context.TODO(), req, http.MethodPost, urlPath)
 	if err != nil {
-		return fmt.Errorf("request failed: %v", err)
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
+		return err
 	}
 
-	result := gjson.ParseBytes(resp.Body())
-	switch result.Get("code").Num {
-	case 0:
-		s.Order.Price = result.Get("data.order.total_money").Str
-		return nil
-	case -3000:
-		logrus.Warning("当前人多拥挤")
-	case -3100:
-		logrus.Warning("部分数据加载失败")
-	default:
-		return fmt.Errorf("parse response failed: %v", resp.String())
-	}
-	return s.GetCart()
+	s.Order.Price = gjson.Get(resp.String(), "data.order.total_money").Str
+	return nil
 }
 
-func (s *Session) CreateOrder() error {
+func (s *Session) CreateOrder(ctx context.Context) error {
 	urlPath := "https://maicai.api.ddxq.mobi/order/addNewOrder"
 
 	packageOrderJson, err := json.Marshal(s.PackageOrder)
@@ -210,37 +196,7 @@ func (s *Session) CreateOrder() error {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	resp, err := req.SetBody(strings.NewReader(params.Encode())).Post(urlPath)
-	if err != nil {
-		return fmt.Errorf("request failed: %v", err)
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
-	}
-
-	jsonResult := gjson.ParseBytes(resp.Body())
-	switch jsonResult.Get("code").Int() {
-	case -3000:
-		logrus.Warningf("当前人多拥挤, body: %v", jsonResult.Get("msg"))
-		return s.CreateOrder()
-	}
-
-	var result AddNewOrderReturnData
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
-		return fmt.Errorf("parse response failed: %v, body: %v", err, resp.String())
-	}
-	switch result.Code {
-	case 0:
-		return nil
-	case 5001:
-		s.PackageOrder = result.Data.PackageOrder
-		return ErrorNoStock
-	case 5003:
-		return ErrorProductChange
-	case 5004:
-		fmt.Println(result.Msg)
-		return ErrorInvalidReserveTime
-	default:
-		return fmt.Errorf("无法识别的返回码: %d, msg: %v", result.Code, result.Msg)
-	}
+	req.SetBody(strings.NewReader(params.Encode()))
+	_, err = s.execute(ctx, req, http.MethodPost, urlPath)
+	return err
 }

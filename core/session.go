@@ -15,11 +15,16 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/tidwall/gjson"
 
 	"github.com/go-resty/resty/v2"
 
@@ -28,11 +33,7 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 )
 
-func NewSession(cookie string, num int) *Session {
-	// TODO 增加并发请求
-	if num < 1 {
-		num = 1
-	}
+func NewSession(cookie string, interval int64) *Session {
 	if !strings.HasPrefix(cookie, "DDXQSESSID=") {
 		cookie = "DDXQSESSID=" + cookie
 	}
@@ -54,34 +55,70 @@ func NewSession(cookie string, num int) *Session {
 	client := resty.New()
 	client.Header = header
 	return &Session{
-		client: client,
-		num:    num,
+		client:   client,
+		interval: interval,
 	}
 }
 
 type Session struct {
-	client *resty.Client
-	num    int
+	client   *resty.Client
+	interval int64 // 间隔请求时间(ms)
 
-	UserID       string
-	Address      *AddressItem
-	BarkId       string
+	UserID   string
+	Address  *AddressItem
+	BarkId   string
+	PayType  int
+	CartMode int
+
 	Cart         Cart
 	Order        Order
 	PackageOrder PackageOrder
-	PayType      int
-	CartMode     int
 }
 
 func (s *Session) Clone() *Session {
 	return &Session{
 		client:   s.client,
+		interval: s.interval,
+
 		UserID:   s.UserID,
 		Address:  s.Address,
 		BarkId:   s.BarkId,
 		PayType:  s.PayType,
 		CartMode: s.CartMode,
+
+		Cart:         s.Cart,
+		Order:        s.Order,
+		PackageOrder: s.PackageOrder,
 	}
+}
+
+func (s *Session) execute(ctx context.Context, request *resty.Request, method, url string) (*resty.Response, error) {
+	if ctx != nil {
+		request.SetContext(ctx)
+	}
+	resp, err := request.Execute(method, url)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
+	}
+
+	result := gjson.ParseBytes(resp.Body())
+	code := result.Get("code").Num
+	switch code {
+	case 0:
+		return resp, nil
+	case -3000, -3001:
+		logrus.Warningf("当前人多拥挤(%v): %s", code, resp.String())
+	case -3100:
+		logrus.Warningf("部分数据加载失败: %s", resp.String())
+	default:
+		return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
+	}
+	logrus.Warningf("将在 %dms 后重试", s.interval)
+	time.Sleep(time.Duration(s.interval) * time.Millisecond)
+	return s.execute(nil, request, method, url)
 }
 
 func (s *Session) buildHeader() http.Header {
@@ -95,6 +132,10 @@ func (s *Session) buildHeader() http.Header {
 	header.Set("ddmc-api-version", "9.49.2")
 	header.Set("ddmc-station-id", s.Address.StationId)
 	header.Set("ddmc-uid", s.UserID)
+	if len(s.Address.Location.Location) == 2 {
+		header.Set("ddmc-longitude", strconv.FormatFloat(s.Address.Location.Location[0], 'f', -1, 64))
+		header.Set("ddmc-latitude", strconv.FormatFloat(s.Address.Location.Location[1], 'f', -1, 64))
+	}
 	return header
 }
 
@@ -134,8 +175,8 @@ func (s *Session) chooseAddr() error {
 		return fmt.Errorf("获取收货地址失败: %v", err)
 	}
 	addrs := make([]string, 0, len(addrMap))
-	for _, v := range addrMap {
-		addrs = append(addrs, v.Location.Address)
+	for k := range addrMap {
+		addrs = append(addrs, k)
 	}
 
 	var addr string
@@ -152,7 +193,7 @@ func (s *Session) chooseAddr() error {
 		return errors.New("请选择正确的收货地址")
 	}
 	s.Address = &address
-	logrus.Infof("已选择收货地址: %s", s.Address.Location.Address)
+	logrus.Infof("已选择收货地址: %s %s", s.Address.Location.Address, s.Address.AddrDetail)
 	return nil
 }
 

@@ -15,13 +15,11 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/tidwall/gjson"
 )
@@ -217,6 +215,23 @@ type Cart struct {
 	ParentOrderSign string    `json:"parent_order_sign"`
 }
 
+func (s *Session) CartAllCheck() error {
+	u, err := url.Parse("https://maicai.api.ddxq.mobi/cart/allCheck")
+	if err != nil {
+		return fmt.Errorf("cart url parse failed: %v", err)
+	}
+
+	params := s.buildURLParams(true)
+	params.Set("is_check", "1")
+	u.RawQuery = params.Encode()
+	urlPath := u.String()
+
+	req := s.client.R()
+	req.Header = s.buildHeader()
+	_, err = s.execute(context.Background(), req, http.MethodGet, urlPath)
+	return err
+}
+
 func (s *Session) GetCart() error {
 	u, err := url.Parse("https://maicai.api.ddxq.mobi/cart/index")
 	if err != nil {
@@ -231,29 +246,17 @@ func (s *Session) GetCart() error {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	resp, err := req.Get(urlPath)
+	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath)
 	if err != nil {
-		return fmt.Errorf("request failed: %v", err)
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
-	}
-
-	jsonResult := gjson.ParseBytes(resp.Body())
-	switch jsonResult.Get("code").Int() {
-	case -3000:
-		logrus.Warningf("当前人多拥挤, body: %v", jsonResult.Get("msg"))
-		return s.GetCart()
+		return err
 	}
 
 	var productResult ProductResult
 	if err := json.Unmarshal(resp.Body(), &productResult); err != nil {
 		return fmt.Errorf("parse response failed: %v, body: %v", err, resp.String())
 	}
-	if productResult.Code != 0 {
-		return errors.New(productResult.Error)
-	}
 
+	jsonResult := gjson.ParseBytes(resp.Body())
 	s.Cart.ParentOrderSign = jsonResult.Get("data.parent_order_info.parent_order_sign").Str
 	switch s.CartMode {
 	case 1:

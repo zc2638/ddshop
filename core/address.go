@@ -15,6 +15,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -145,20 +146,14 @@ func (s *Session) GetAddress() (map[string]AddressItem, error) {
 
 	req := s.client.R()
 	req.SetHeader("Host", "sunquan.api.ddxq.mobi")
-	resp, err := req.Get(urlPath)
+	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("statusCode: %d, body: %s", resp.StatusCode(), resp.String())
+		return nil, err
 	}
 
 	var addressResult AddressResult
 	if err := json.Unmarshal(resp.Body(), &addressResult); err != nil {
 		return nil, fmt.Errorf("parse response failed: %v", err)
-	}
-	if addressResult.Code != 0 || !addressResult.Success {
-		return nil, fmt.Errorf("request address failed: %v", addressResult.Message)
 	}
 	if len(addressResult.Data.ValidAddress) == 0 {
 		return nil, errors.New("未查询到有效收货地址，请前往 app 添加或检查填写的 cookie 是否正确！")
@@ -166,7 +161,8 @@ func (s *Session) GetAddress() (map[string]AddressItem, error) {
 
 	result := make(map[string]AddressItem)
 	for _, v := range addressResult.Data.ValidAddress {
-		result[v.Location.Address] = v
+		str := fmt.Sprintf("%s %s %s", v.UserName, v.Location.Address, v.AddrDetail)
+		result[str] = v
 	}
 	return result, nil
 }
