@@ -15,6 +15,7 @@
 package asserts
 
 import (
+	"bytes"
 	_ "embed"
 	"io"
 	"time"
@@ -23,11 +24,12 @@ import (
 	"github.com/faiface/beep/speaker"
 )
 
-// NoticeMP3 defines the content of notice.mp3
+// noticeMP3 defines the content of notice.mp3
 //go:embed notice.mp3
-var NoticeMP3 []byte
+var noticeMP3 []byte
 
-func Play(rc io.ReadCloser) error {
+func Play() error {
+	rc := io.NopCloser(bytes.NewReader(noticeMP3))
 	streamer, format, err := mp3.Decode(rc)
 	if err != nil {
 		return err
