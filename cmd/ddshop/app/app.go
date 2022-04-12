@@ -15,12 +15,16 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/zc2638/ddshop/asserts"
 
 	"golang.org/x/sync/errgroup"
 
@@ -86,6 +90,11 @@ func NewRootCommand() *cobra.Command {
 				core.LoopRun(10, func() {
 					logrus.Info("抢到菜了，请速去支付!")
 				})
+
+				rc := io.NopCloser(bytes.NewReader(asserts.NoticeMP3))
+				if err := asserts.Play(rc); err != nil {
+					logrus.Warningf("播放成功提示音乐失败: %v", err)
+				}
 				return nil
 			}
 		},
