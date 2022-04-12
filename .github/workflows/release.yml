@@ -8,19 +8,18 @@ on:
 jobs:
 
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go_version:
+          - 1.17
     steps:
       - uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev
 
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.17
+          go-version: ${{ matrix.go_version }}
 
       # Cache go build cache, used to speedup go test
       - name: Setup Golang caches
@@ -41,22 +40,56 @@ jobs:
       - name: download
         run: go mod download
 
-      - name: build
+#      - name: Build
+#        run: |
+#          CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_darwin_amd64 github.com/zc2638/ddshop/cmd/ddshop
+#          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags="-w -s" -o release/ddshop_darwin_arm64 github.com/zc2638/ddshop/cmd/ddshop
+#          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_linux_amd64 github.com/zc2638/ddshop/cmd/ddshop
+#          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags="-w -s" -o release/ddshop_linux_arm64 github.com/zc2638/ddshop/cmd/ddshop
+#          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_windows_amd64.exe github.com/zc2638/ddshop/cmd/ddshop
+
+      - run: |
+          mkdir -p build
+
+      - name: Build with xgo
+        uses: TianTianBigWang/ghaction-xgo@master
+        with:
+          xgo_version: v0.1
+          go_version: ${{ matrix.go_version }}
+          pkg: cmd/ddshop
+          dest: build
+          prefix: ddshop
+          targets: windows/amd64,linux/arm64,linux/amd64,darwin/arm64,darwin/amd64
+          v: true
+          x: false
+          race: false
+          ldflags: -s -w
+          buildmode: default
+
+      - name: Move
         run: |
-          CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_darwin_amd64 github.com/zc2638/ddshop/cmd/ddshop
-          CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -ldflags="-w -s" -o release/ddshop_darwin_arm64 github.com/zc2638/ddshop/cmd/ddshop
-          CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_linux_amd64 github.com/zc2638/ddshop/cmd/ddshop
-          CGO_ENABLED=1 GOOS=linux   GOARCH=arm64 go build -ldflags="-w -s" -o release/ddshop_linux_arm64 github.com/zc2638/ddshop/cmd/ddshop
-          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_windows_amd64.exe github.com/zc2638/ddshop/cmd/ddshop
+          ls ./build
+          mkdir -p release
+          mv $GITHUB_WORKSPACE/build/ddshop-darwin-10.16-amd64 release/ddshop_darwin_amd64 && chmod +x release/ddshop_darwin_amd64
+          mv $GITHUB_WORKSPACE/build/ddshop-darwin-10.16-arm64 release/ddshop_darwin_arm64 && chmod +x release/ddshop_darwin_arm64
+          mv $GITHUB_WORKSPACE/build/ddshop-linux-amd64 release/ddshop_linux_amd64 && chmod +x release/ddshop_linux_amd64
+          mv $GITHUB_WORKSPACE/build/ddshop-windows-4.0-amd64.exe release/ddshop_windows_amd64.exe
+          cd release
+          tar -zcvf ddshop_darwin_amd64.tar.gz ddshop_darwin_amd64
+          tar -zcvf ddshop_darwin_arm64.tar.gz ddshop_darwin_arm64
+          tar -zcvf ddshop_linux_amd64.tar.gz ddshop_linux_amd64
+          zip -q -r ddshop_windows_amd64.zip ddshop_windows_amd64.exe
+#          not support
+#          mv $GITHUB_WORKSPACE/build/ddshop-linux-arm64 release/ddshop_linux_arm64 && chmod +x release/ddshop_linux_arm64
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release/ddshop_linux_amd64
-            release/ddshop_linux_arm64
-            release/ddshop_windows_amd64.exe
-            release/ddshop_darwin_amd64
-            release/ddshop_darwin_arm64
+            release/ddshop_linux_amd64.tar.gz
+            release/ddshop_linux_arm64.tar.gz
+            release/ddshop_windows_amd64.zip
+            release/ddshop_darwin_amd64.tar.gz
+            release/ddshop_darwin_arm64.tar.gz
 #       env:
 #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
