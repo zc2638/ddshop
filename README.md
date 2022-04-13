@@ -29,6 +29,12 @@ ddshop --cookie <custom-cookie>
 ddshop --cookie <custom-cookie> --interval 500
 ```
 
+支持预设置支付方式  
+默认支持的值：支付宝、alipay、微信、wechat
+```shell
+ddshop --cookie <custom-cookie> --pay-type wechat
+```
+
 Bark推送提醒 [点击查看详情](https://github.com/Finb/Bark)  
 使用获取到的 `bark id` 替换下面命令中的 `<custom-bark-key>`
 ```shell

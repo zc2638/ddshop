@@ -72,7 +72,7 @@ type Session struct {
 	appClientID string
 
 	UserID  string
-	PayType int
+	PayType int64
 	Address *AddressItem
 	Reserve ReserveTime
 }
@@ -172,11 +172,11 @@ func (s *Session) SetReserve(reserve ReserveTime) {
 	s.Reserve = reserve
 }
 
-func (s *Session) Choose() error {
+func (s *Session) Choose(payType string) error {
 	if err := s.chooseAddr(); err != nil {
 		return err
 	}
-	if err := s.choosePay(); err != nil {
+	if err := s.choosePay(payType); err != nil {
 		return err
 	}
 	return nil
@@ -190,6 +190,13 @@ func (s *Session) chooseAddr() error {
 	addrs := make([]string, 0, len(addrMap))
 	for k := range addrMap {
 		addrs = append(addrs, k)
+	}
+
+	if len(addrs) == 1 {
+		address := addrMap[addrs[0]]
+		s.Address = &address
+		logrus.Infof("默认收货地址: %s %s", s.Address.Location.Address, s.Address.AddrDetail)
+		return nil
 	}
 
 	var addr string
@@ -211,29 +218,34 @@ func (s *Session) chooseAddr() error {
 }
 
 const (
-	paymentAlipay = "支付宝"
-	paymentWechat = "微信"
+	PaymentAlipay    = "alipay"
+	PaymentAlipayStr = "支付宝"
+	PaymentWechat    = "wechat"
+	PaymentWechatStr = "微信"
 )
 
-func (s *Session) choosePay() error {
-	var payName string
-	sv := &survey.Select{
-		Message: "请选择支付方式",
-		Options: []string{paymentWechat, paymentAlipay},
-		Default: paymentWechat,
-	}
-	if err := survey.AskOne(sv, &payName); err != nil {
-		return fmt.Errorf("选择支付方式错误: %v", err)
+func (s *Session) choosePay(payType string) error {
+	if payType == "" {
+		sv := &survey.Select{
+			Message: "请选择支付方式",
+			Options: []string{PaymentWechatStr, PaymentAlipayStr},
+			Default: PaymentWechatStr,
+		}
+		if err := survey.AskOne(sv, &payType); err != nil {
+			return fmt.Errorf("选择支付方式错误: %v", err)
+		}
 	}
 
 	// 2支付宝，4微信，6小程序支付
-	switch payName {
-	case paymentAlipay:
+	switch payType {
+	case PaymentAlipay, PaymentAlipayStr:
 		s.PayType = 2
-	case paymentWechat:
+		logrus.Info("已选择支付方式：支付宝")
+	case PaymentWechat, PaymentWechatStr:
 		s.PayType = 4
+		logrus.Info("已选择支付方式：微信")
 	default:
-		return fmt.Errorf("无法识别的支付方式: %s", payName)
+		return fmt.Errorf("无法识别的支付方式: %s", payType)
 	}
 	return nil
 }

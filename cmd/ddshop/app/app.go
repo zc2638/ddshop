@@ -34,6 +34,7 @@ import (
 type Option struct {
 	Cookie   string
 	BarkKey  string
+	PayType  string
 	Interval int64
 }
 
@@ -57,10 +58,10 @@ func NewRootCommand() *cobra.Command {
 			if err := session.GetUser(); err != nil {
 				return fmt.Errorf("获取用户信息失败: %v", err)
 			}
-			if err := session.Choose(); err != nil {
+			if err := session.Choose(opt.PayType); err != nil {
 				return err
 			}
-
+			fmt.Println()
 			go func() {
 				for {
 					if err := Start(session); err != nil {
@@ -113,6 +114,7 @@ func NewRootCommand() *cobra.Command {
 	barkKeyEnv := os.Getenv("DDSHOP_BARKKEY")
 	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
 	cmd.Flags().StringVar(&opt.BarkKey, "bark-key", barkKeyEnv, "设置bark的通知key")
+	cmd.Flags().StringVar(&opt.PayType, "pay-type", "", "设置支付方式，支付宝、微信、alipay、wechat")
 	cmd.Flags().Int64Var(&opt.Interval, "interval", 500, "设置请求间隔时间(ms)，默认为100")
 	return cmd
 }
