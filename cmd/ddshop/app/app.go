@@ -99,7 +99,7 @@ func NewRootCommand() *cobra.Command {
 
 	cookieEnv := os.Getenv("DDSHOP_COOKIE")
 	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
-	cmd.Flags().Int64Var(&opt.Interval, "interval", 100, "设置请求间隔时间(ms)，默认为100")
+	cmd.Flags().Int64Var(&opt.Interval, "interval", 500, "设置请求间隔时间(ms)，默认为100")
 	return cmd
 }
 

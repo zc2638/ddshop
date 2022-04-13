@@ -24,13 +24,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tidwall/gjson"
-
-	"github.com/go-resty/resty/v2"
-
-	"github.com/sirupsen/logrus"
-
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/go-resty/resty/v2"
+	"github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 )
 
 func NewSession(cookie string, interval int64) *Session {
@@ -57,12 +54,22 @@ func NewSession(cookie string, interval int64) *Session {
 	return &Session{
 		client:   client,
 		interval: interval,
+
+		apiVersion:  "9.49.2",
+		appVersion:  "2.82.0",
+		channel:     "applet",
+		appClientID: "4",
 	}
 }
 
 type Session struct {
 	client   *resty.Client
 	interval int64 // 间隔请求时间(ms)
+
+	channel     string
+	apiVersion  string
+	appVersion  string
+	appClientID string
 
 	UserID   string
 	Address  *AddressItem
@@ -111,8 +118,6 @@ func (s *Session) execute(ctx context.Context, request *resty.Request, method, u
 		return resp, nil
 	case -3000, -3001:
 		logrus.Warningf("当前人多拥挤(%v): %s", code, resp.String())
-	case -3100:
-		logrus.Warningf("部分数据加载失败: %s", resp.String())
 	default:
 		return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
 	}
@@ -125,11 +130,11 @@ func (s *Session) buildHeader() http.Header {
 	header := make(http.Header)
 	header.Set("ddmc-city-number", s.Address.CityNumber)
 	header.Set("ddmc-os-version", "undefined")
-	header.Set("ddmc-channel", "applet")
-	header.Set("ddmc-build-version", "2.82.0")
-	header.Set("ddmc-app-client-id", "4")
+	header.Set("ddmc-channel", s.channel)
+	header.Set("ddmc-api-version", s.apiVersion)
+	header.Set("ddmc-build-version", s.appVersion)
+	header.Set("ddmc-app-client-id", s.appClientID)
 	header.Set("ddmc-ip", "")
-	header.Set("ddmc-api-version", "9.49.2")
 	header.Set("ddmc-station-id", s.Address.StationId)
 	header.Set("ddmc-uid", s.UserID)
 	if len(s.Address.Location.Location) == 2 {
@@ -141,11 +146,11 @@ func (s *Session) buildHeader() http.Header {
 
 func (s *Session) buildURLParams(needAddress bool) url.Values {
 	params := url.Values{}
-	params.Add("api_version", "9.49.2")
-	params.Add("app_version", "2.82.0")
-	params.Add("app_client_id", "4")
+	params.Add("channel", s.channel)
+	params.Add("api_version", s.apiVersion)
+	params.Add("app_version", s.appVersion)
+	params.Add("app_client_id", s.appClientID)
 	params.Add("applet_source", "")
-	params.Add("channel", "applet")
 	params.Add("h5_source", "")
 	params.Add("sharer_uid", "")
 	params.Add("s_id", "")
