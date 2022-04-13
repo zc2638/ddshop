@@ -132,12 +132,12 @@ func NewRootCommand() *cobra.Command {
 func Start(session *core.Session) error {
 	logrus.Info("=====> 获取购物车中有效商品")
 
+	if err := session.CartAllCheck(); err != nil {
+		return fmt.Errorf("全选购物车商品失败: %v", err)
+	}
 	cartData, err := session.GetCart()
 	if err != nil {
 		return err
-	}
-	if err := session.CartAllCheck(); err != nil {
-		return fmt.Errorf("全选购物车商品失败: %v", err)
 	}
 
 	products := cartData["products"].([]map[string]interface{})
