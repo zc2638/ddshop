@@ -17,9 +17,9 @@ package main
 import (
 	"os"
 
-	"github.com/zc2638/ddshop/cmd/ddshop/app"
-
 	"github.com/sirupsen/logrus"
+
+	"github.com/zc2638/ddshop/cmd/ddshop/app"
 )
 
 const TimeFormat = "2006/01/02 15:04:05"

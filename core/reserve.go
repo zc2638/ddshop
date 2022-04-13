@@ -30,18 +30,18 @@ type ReserveTime struct {
 	SelectMsg      string `json:"select_msg"`
 }
 
-func (s *Session) GetMultiReserveTime() ([]ReserveTime, error) {
+func (s *Session) GetMultiReserveTime(products []map[string]interface{}) ([]ReserveTime, error) {
 	urlPath := "https://maicai.api.ddxq.mobi/order/getMultiReserveTime"
-	productsList := [][]Product{s.Order.Products}
+	productsList := [][]map[string]interface{}{products}
 	productsJson, err := json.Marshal(productsList)
 	if err != nil {
 		return nil, fmt.Errorf("marshal products info failed: %v", err)
 	}
 
 	params := s.buildURLParams(true)
+	params.Add("products", string(productsJson))
 	params.Add("group_config_id", "")
 	params.Add("isBridge", "false")
-	params.Add("products", string(productsJson))
 
 	req := s.client.R()
 	req.Header = s.buildHeader()

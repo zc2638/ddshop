@@ -71,15 +71,10 @@ type Session struct {
 	appVersion  string
 	appClientID string
 
-	UserID   string
-	Address  *AddressItem
-	BarkId   string
-	PayType  int
-	CartMode int
-
-	Cart         Cart
-	Order        Order
-	PackageOrder PackageOrder
+	UserID  string
+	PayType int
+	Address *AddressItem
+	Reserve ReserveTime
 }
 
 func (s *Session) Clone() *Session {
@@ -87,15 +82,15 @@ func (s *Session) Clone() *Session {
 		client:   s.client,
 		interval: s.interval,
 
-		UserID:   s.UserID,
-		Address:  s.Address,
-		BarkId:   s.BarkId,
-		PayType:  s.PayType,
-		CartMode: s.CartMode,
+		channel:     s.channel,
+		apiVersion:  s.apiVersion,
+		appVersion:  s.appVersion,
+		appClientID: s.appClientID,
 
-		Cart:         s.Cart,
-		Order:        s.Order,
-		PackageOrder: s.PackageOrder,
+		UserID:  s.UserID,
+		Address: s.Address,
+		PayType: s.PayType,
+		Reserve: s.Reserve,
 	}
 }
 
@@ -167,13 +162,14 @@ func (s *Session) buildURLParams(needAddress bool) url.Values {
 		}
 	}
 
-	// TODO 不知道是不是必须
 	params.Add("device_token", "")
-
-	// TODO 计算方式?
 	params.Add("nars", "")
 	params.Add("sesi", "")
 	return params
+}
+
+func (s *Session) SetReserve(reserve ReserveTime) {
+	s.Reserve = reserve
 }
 
 func (s *Session) Choose() error {
@@ -181,9 +177,6 @@ func (s *Session) Choose() error {
 		return err
 	}
 	if err := s.choosePay(); err != nil {
-		return err
-	}
-	if err := s.chooseCartMode(); err != nil {
 		return err
 	}
 	return nil
@@ -233,6 +226,7 @@ func (s *Session) choosePay() error {
 		return fmt.Errorf("选择支付方式错误: %v", err)
 	}
 
+	// 2支付宝，4微信，6小程序支付
 	switch payName {
 	case paymentAlipay:
 		s.PayType = 2
@@ -240,33 +234,6 @@ func (s *Session) choosePay() error {
 		s.PayType = 4
 	default:
 		return fmt.Errorf("无法识别的支付方式: %s", payName)
-	}
-	return nil
-}
-
-const (
-	cartModeAvailable = "结算所有有效商品(不包括换购)"
-	cartModeAll       = "结算所有勾选商品(包括换购)"
-)
-
-func (s *Session) chooseCartMode() error {
-	var cartDesc string
-	sv := &survey.Select{
-		Message: "请选择购物车商品结算模式",
-		Options: []string{cartModeAvailable, cartModeAll},
-		Default: cartModeAvailable,
-	}
-	if err := survey.AskOne(sv, &cartDesc); err != nil {
-		return fmt.Errorf("选择购物车商品结算模式错误: %v", err)
-	}
-
-	switch cartDesc {
-	case cartModeAvailable:
-		s.CartMode = 1
-	case cartModeAll:
-		s.CartMode = 2
-	default:
-		return fmt.Errorf("无法识别的购物车商品结算模式: %s", cartDesc)
 	}
 	return nil
 }

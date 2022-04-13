@@ -22,16 +22,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/zc2638/ddshop/pkg/notice"
-
-	"github.com/zc2638/ddshop/asserts"
-
-	"golang.org/x/sync/errgroup"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/zc2638/ddshop/asserts"
 	"github.com/zc2638/ddshop/core"
+	"github.com/zc2638/ddshop/pkg/notice"
 )
 
 type Option struct {
@@ -121,35 +118,24 @@ func NewRootCommand() *cobra.Command {
 }
 
 func Start(session *core.Session) error {
-	logrus.Info(">>> 获取购物车中有效商品")
+	logrus.Info("=====> 获取购物车中有效商品")
 
-	if err := session.GetCart(); err != nil {
-		return fmt.Errorf("检查购物车失败: %v", err)
+	cartData, err := session.GetCart()
+	if err != nil {
+		return err
 	}
-	if len(session.Cart.ProdList) == 0 {
-		return core.ErrorNoValidProduct
-	}
-
 	if err := session.CartAllCheck(); err != nil {
-		return fmt.Errorf("全选购车车商品失败: %v", err)
+		return fmt.Errorf("全选购物车商品失败: %v", err)
 	}
 
-	for index, prod := range session.Cart.ProdList {
-		logrus.Infof("[%v] %s 数量：%v 总价：%s", index, prod.ProductName, prod.Count, prod.TotalPrice)
+	products := cartData["products"].([]map[string]interface{})
+	for k, v := range products {
+		logrus.Infof("[%v] %s 数量：%v 总价：%s", k, v["product_name"], v["count"], v["total_price"])
 	}
-	session.Order.Products = session.Cart.ProdList
 
 	for {
-		logrus.Info(">>> 生成订单信息")
-		if err := session.CheckOrder(); err != nil {
-			return fmt.Errorf("检查订单失败: %v", err)
-		}
-		logrus.Infof("订单总金额：%v\n", session.Order.Price)
-
-		session.GeneratePackageOrder()
-
-		logrus.Info(">>> 获取可预约时间")
-		multiReserveTime, err := session.GetMultiReserveTime()
+		logrus.Info("=====> 获取可预约时间")
+		multiReserveTime, err := session.GetMultiReserveTime(products)
 		if err != nil {
 			return fmt.Errorf("获取可预约时间失败: %v", err)
 		}
@@ -158,16 +144,23 @@ func Start(session *core.Session) error {
 		}
 		logrus.Infof("发现可用的配送时段!")
 
+		logrus.Info("=====> 生成订单信息")
+		checkOrderData, err := session.CheckOrder(cartData, multiReserveTime)
+		if err != nil {
+			return fmt.Errorf("检查订单失败: %v", err)
+		}
+		logrus.Infof("订单总金额：%v\n", checkOrderData["price"])
+
 		var wg errgroup.Group
 		for _, reserveTime := range multiReserveTime {
 			sess := session.Clone()
-			sess.UpdatePackageOrder(reserveTime)
+			sess.SetReserve(reserveTime)
 			wg.Go(func() error {
-				startTime := time.Unix(int64(sess.PackageOrder.PaymentOrder.ReservedTimeStart), 0).Format("2006/01/02 15:04:05")
-				endTime := time.Unix(int64(sess.PackageOrder.PaymentOrder.ReservedTimeEnd), 0).Format("2006/01/02 15:04:05")
+				startTime := time.Unix(int64(sess.Reserve.StartTimestamp), 0).Format("2006/01/02 15:04:05")
+				endTime := time.Unix(int64(sess.Reserve.EndTimestamp), 0).Format("2006/01/02 15:04:05")
 				timeRange := startTime + "——" + endTime
-				logrus.Infof(">>> 提交订单中, 预约时间段(%s)", timeRange)
-				if err := sess.CreateOrder(context.Background()); err != nil {
+				logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
+				if err := sess.CreateOrder(context.Background(), cartData, checkOrderData); err != nil {
 					logrus.Warningf("提交订单(%s)失败: %v", timeRange, err)
 					return err
 				}

@@ -21,135 +21,28 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
-type Order struct {
-	Products []Product `json:"products"`
-	Price    string    `json:"price"`
-}
-
-type Package struct {
-	Products             []map[string]interface{} `json:"products"`
-	PackageId            int                      `json:"package_id"`
-	PackageType          int                      `json:"package_type"`
-	FirstSelectedBigTime string                   `json:"first_selected_big_time"`
-	EtaTraceId           string                   `json:"eta_trace_id"`
-	SoonArrival          int                      `json:"soon_arrival"`
-
-	ReservedTimeStart int `json:"reserved_time_start"`
-	ReservedTimeEnd   int `json:"reserved_time_end"`
-}
-
-type PaymentOrder struct {
-	ReservedTimeStart    int    `json:"reserved_time_start"`
-	ReservedTimeEnd      int    `json:"reserved_time_end"`
-	FreightDiscountMoney string `json:"freight_discount_money"` // 运费折扣费用
-	FreightMoney         string `json:"freight_money"`          // 运费
-	OrderFreight         string `json:"order_freight"`          // 订单运费
-	AddressId            string `json:"address_id"`
-	ParentOrderSign      string `json:"parent_order_sign"`
-	PayType              int    `json:"pay_type"` // 2支付宝，4微信，6小程序支付
-	ProductType          int    `json:"product_type"`
-	IsUseBalance         int    `json:"is_use_balance"`
-	ReceiptWithoutSku    string `json:"receipt_without_sku"`
-	Price                string `json:"price"`
-}
-
-type PackageOrder struct {
-	Packages     []*Package   `json:"packages"`
-	PaymentOrder PaymentOrder `json:"payment_order"`
-}
-
-type AddNewOrderReturnData struct {
-	Success bool   `json:"success"`
-	Code    int    `json:"code"`
-	Msg     string `json:"msg"`
-	Data    struct {
-		PackageOrder     PackageOrder `json:"package_order"`
-		StockoutProducts []Product    `json:"stockout_products"`
-	} `json:"data"`
-}
-
-func (s *Session) GeneratePackageOrder() {
-	products := make([]map[string]interface{}, 0, len(s.Order.Products))
-	for _, product := range s.Order.Products {
-		prod := map[string]interface{}{
-			"id":           product.Id,
-			"cart_id":      product.CartId,
-			"count":        product.Count,
-			"price":        product.Price,
-			"product_type": product.ProductType,
-			"is_booking":   product.IsBooking,
-			"product_name": product.ProductName,
-			"small_image":  product.SmallImage,
-			"sizes":        product.Sizes,
-		}
-		products = append(products, prod)
-	}
-	s.PackageOrder.Packages = []*Package{
-		{
-			FirstSelectedBigTime: "0",
-			Products:             products,
-			EtaTraceId:           "",
-			PackageId:            1,
-			PackageType:          1,
-		},
-	}
-
-	s.PackageOrder.PaymentOrder = PaymentOrder{
-		FreightDiscountMoney: "5.00",
-		FreightMoney:         "5.00",
-		OrderFreight:         "0.00",
-		AddressId:            s.Address.Id,
-		ParentOrderSign:      s.Cart.ParentOrderSign,
-		PayType:              s.PayType,
-		ProductType:          1,
-		IsUseBalance:         0,
-		ReceiptWithoutSku:    "1",
-		Price:                s.Order.Price,
-	}
-}
-
-func (s *Session) UpdatePackageOrder(reserveTime ReserveTime) {
-	s.PackageOrder.PaymentOrder.ReservedTimeStart = reserveTime.StartTimestamp
-	s.PackageOrder.PaymentOrder.ReservedTimeEnd = reserveTime.EndTimestamp
-	for _, p := range s.PackageOrder.Packages {
-		p.ReservedTimeStart = reserveTime.StartTimestamp
-		p.ReservedTimeEnd = reserveTime.EndTimestamp
-	}
-}
-
-func (s *Session) CheckOrder() error {
+func (s *Session) CheckOrder(cartData map[string]interface{}, reserveTimes []ReserveTime) (map[string]interface{}, error) {
 	urlPath := "https://maicai.api.ddxq.mobi/order/checkOrder"
 
-	var products []map[string]interface{}
-	for _, product := range s.Order.Products {
-		prod := map[string]interface{}{
-			"id":                   product.Id,
-			"total_money":          product.TotalPrice,
-			"total_origin_money":   product.OriginPrice,
-			"count":                product.Count,
-			"price":                product.Price,
-			"instant_rebate_money": "0.00",
-			"origin_price":         product.OriginPrice,
-			"sizes":                product.Sizes,
-		}
-		products = append(products, prod)
+	packagesInfo := make(map[string]interface{})
+	for k, v := range cartData {
+		packagesInfo[k] = v
 	}
-	packagesInfo := []map[string]interface{}{
-		{
-			"package_type": 1,
-			"package_id":   1,
-			"products":     products,
-		},
+	packagesInfo["reserved_time"] = map[string]interface{}{
+		"reserved_time_start": reserveTimes[0].StartTimestamp,
+		"reserved_time_end":   reserveTimes[0].EndTimestamp,
 	}
-	packagesJson, err := json.Marshal(packagesInfo)
+	packagesJson, err := json.Marshal([]interface{}{packagesInfo})
 	if err != nil {
-		return fmt.Errorf("marshal products info failed: %v", err)
+		return nil, fmt.Errorf("marshal products info failed: %v", err)
 	}
 
 	params := s.buildURLParams(true)
+	params.Add("packages", string(packagesJson))
 	params.Add("user_ticket_id", "default")
 	params.Add("freight_ticket_id", "default")
 	params.Add("is_use_point", "0")
@@ -157,7 +50,6 @@ func (s *Session) CheckOrder() error {
 	params.Add("is_buy_vip", "0")
 	params.Add("coupons_id", "")
 	params.Add("is_buy_coupons", "0")
-	params.Add("packages", string(packagesJson))
 	params.Add("check_order_type", "0")
 	params.Add("is_support_merge_payment", "0")
 	params.Add("showData", "true")
@@ -168,17 +60,80 @@ func (s *Session) CheckOrder() error {
 	req.SetBody(strings.NewReader(params.Encode()))
 	resp, err := s.execute(context.TODO(), req, http.MethodPost, urlPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	s.Order.Price = gjson.Get(resp.String(), "data.order.total_money").Str
-	return nil
+	jsonResult := gjson.ParseBytes(resp.Body())
+	out := map[string]interface{}{
+		"price":                  jsonResult.Get("data.order.total_money").Str,
+		"freight_discount_money": jsonResult.Get("data.order.freight_discount_money").Str,                // 运费折扣费用
+		"freight_money":          jsonResult.Get("data.order.freight_money").Str,                         // 运费
+		"order_freight":          jsonResult.Get("data.order.freights.0.freight.freight_real_money").Str, // 订单运费
+		"user_ticket_id":         jsonResult.Get("data.order.default_coupon._id").Str,
+	}
+	return out, nil
 }
 
-func (s *Session) CreateOrder(ctx context.Context) error {
+func (s *Session) CreateOrder(ctx context.Context, cartData map[string]interface{}, checkOrderData map[string]interface{}) error {
 	urlPath := "https://maicai.api.ddxq.mobi/order/addNewOrder"
 
-	packageOrderJson, err := json.Marshal(s.PackageOrder)
+	paymentOrder := map[string]interface{}{
+		"reserved_time_start":    s.Reserve.StartTimestamp,
+		"reserved_time_end":      s.Reserve.EndTimestamp,
+		"parent_order_sign":      cartData["parent_order_sign"],
+		"address_id":             s.Address.Id,
+		"pay_type":               s.PayType,
+		"product_type":           1,
+		"form_id":                strings.ReplaceAll(uuid.New().String(), "-", ""),
+		"receipt_without_sku":    nil,
+		"vip_money":              "",
+		"vip_buy_user_ticket_id": "",
+		"coupons_money":          "",
+		"coupons_id":             "",
+	}
+	for k, v := range checkOrderData {
+		paymentOrder[k] = v
+	}
+
+	packages := map[string]interface{}{
+		"reserved_time_start":       s.Reserve.StartTimestamp,
+		"reserved_time_end":         s.Reserve.EndTimestamp,
+		"products":                  cartData["products"],
+		"package_type":              cartData["package_type"],
+		"package_id":                cartData["package_id"],
+		"total_money":               cartData["total_money"],
+		"total_origin_money":        cartData["total_origin_money"],
+		"goods_real_money":          cartData["goods_real_money"],
+		"total_count":               cartData["total_count"],
+		"cart_count":                cartData["cart_count"],
+		"is_presale":                cartData["is_presale"],
+		"instant_rebate_money":      cartData["instant_rebate_money"],
+		"coupon_rebate_money":       cartData["coupon_rebate_money"],
+		"total_rebate_money":        cartData["total_rebate_money"],
+		"used_balance_money":        cartData["used_balance_money"],
+		"can_used_balance_money":    cartData["can_used_balance_money"],
+		"used_point_num":            cartData["used_point_num"],
+		"used_point_money":          cartData["used_point_money"],
+		"can_used_point_num":        cartData["can_used_point_num"],
+		"can_used_point_money":      cartData["can_used_point_money"],
+		"is_share_station":          cartData["is_share_station"],
+		"only_today_products":       cartData["only_today_products"],
+		"only_tomorrow_products":    cartData["only_tomorrow_products"],
+		"front_package_text":        cartData["front_package_text"],
+		"front_package_type":        cartData["front_package_type"],
+		"front_package_stock_color": cartData["front_package_stock_color"],
+		"front_package_bg_color":    cartData["front_package_bg_color"],
+		"eta_trace_id":              "",
+		"soon_arrival":              "",
+		"first_selected_big_time":   0,
+		"receipt_without_sku":       0,
+	}
+
+	packageOrder := map[string]interface{}{
+		"payment_order": paymentOrder,
+		"packages":      []interface{}{packages},
+	}
+	packageOrderJson, err := json.Marshal(packageOrder)
 	if err != nil {
 		return fmt.Errorf("marshal products info failed: %v", err)
 	}
