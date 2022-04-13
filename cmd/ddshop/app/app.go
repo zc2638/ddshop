@@ -62,8 +62,16 @@ func NewRootCommand() *cobra.Command {
 				return err
 			}
 			fmt.Println()
+
+			ctx, cancelFunc := context.WithCancel(context.Background())
 			go func() {
 				for {
+					select {
+					case <-ctx.Done():
+						logrus.Warningf("context done")
+						return
+					default:
+					}
 					if err := Start(session); err != nil {
 						switch err {
 						case core.ErrorNoValidProduct:
@@ -84,8 +92,10 @@ func NewRootCommand() *cobra.Command {
 
 			select {
 			case err := <-errCh:
+				cancelFunc()
 				return err
 			case <-successCh:
+				cancelFunc()
 				core.LoopRun(10, func() {
 					logrus.Info("抢菜成功，请尽快支付!")
 				})
