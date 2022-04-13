@@ -30,27 +30,27 @@ type Order struct {
 }
 
 type Package struct {
-	FirstSelectedBigTime string                   `json:"first_selected_big_time"`
 	Products             []map[string]interface{} `json:"products"`
-	EtaTraceId           string                   `json:"eta_trace_id"`
 	PackageId            int                      `json:"package_id"`
-	ReservedTimeStart    int                      `json:"reserved_time_start"`
-	ReservedTimeEnd      int                      `json:"reserved_time_end"`
-	SoonArrival          int                      `json:"soon_arrival"`
 	PackageType          int                      `json:"package_type"`
+	FirstSelectedBigTime string                   `json:"first_selected_big_time"`
+	EtaTraceId           string                   `json:"eta_trace_id"`
+	SoonArrival          int                      `json:"soon_arrival"`
+
+	ReservedTimeStart int `json:"reserved_time_start"`
+	ReservedTimeEnd   int `json:"reserved_time_end"`
 }
 
 type PaymentOrder struct {
 	ReservedTimeStart    int    `json:"reserved_time_start"`
 	ReservedTimeEnd      int    `json:"reserved_time_end"`
-	FreightDiscountMoney string `json:"freight_discount_money"`
-	FreightMoney         string `json:"freight_money"`
-	OrderFreight         string `json:"order_freight"`
+	FreightDiscountMoney string `json:"freight_discount_money"` // 运费折扣费用
+	FreightMoney         string `json:"freight_money"`          // 运费
+	OrderFreight         string `json:"order_freight"`          // 订单运费
 	AddressId            string `json:"address_id"`
-	UsedPointNum         int    `json:"used_point_num"`
 	ParentOrderSign      string `json:"parent_order_sign"`
-	PayType              int    `json:"pay_type"`
-	OrderType            int    `json:"order_type"`
+	PayType              int    `json:"pay_type"` // 2支付宝，4微信，6小程序支付
+	ProductType          int    `json:"product_type"`
 	IsUseBalance         int    `json:"is_use_balance"`
 	ReceiptWithoutSku    string `json:"receipt_without_sku"`
 	Price                string `json:"price"`
@@ -72,48 +72,43 @@ type AddNewOrderReturnData struct {
 }
 
 func (s *Session) GeneratePackageOrder() {
-	var products []map[string]interface{}
+	products := make([]map[string]interface{}, 0, len(s.Order.Products))
 	for _, product := range s.Order.Products {
 		prod := map[string]interface{}{
-			"id":                   product.Id,
-			"total_money":          product.TotalPrice,
-			"total_origin_money":   product.OriginPrice,
-			"count":                product.Count,
-			"price":                product.Price,
-			"instant_rebate_money": "0.00",
-			"origin_price":         product.OriginPrice,
-			"sizes":                product.Sizes,
+			"id":           product.Id,
+			"cart_id":      product.CartId,
+			"count":        product.Count,
+			"price":        product.Price,
+			"product_type": product.ProductType,
+			"is_booking":   product.IsBooking,
+			"product_name": product.ProductName,
+			"small_image":  product.SmallImage,
+			"sizes":        product.Sizes,
 		}
 		products = append(products, prod)
 	}
-
-	p := Package{
-		FirstSelectedBigTime: "0",
-		Products:             products,
-		EtaTraceId:           "",
-		PackageId:            1,
-		PackageType:          1,
+	s.PackageOrder.Packages = []*Package{
+		{
+			FirstSelectedBigTime: "0",
+			Products:             products,
+			EtaTraceId:           "",
+			PackageId:            1,
+			PackageType:          1,
+		},
 	}
-	paymentOrder := PaymentOrder{
+
+	s.PackageOrder.PaymentOrder = PaymentOrder{
 		FreightDiscountMoney: "5.00",
 		FreightMoney:         "5.00",
 		OrderFreight:         "0.00",
 		AddressId:            s.Address.Id,
-		UsedPointNum:         0,
 		ParentOrderSign:      s.Cart.ParentOrderSign,
 		PayType:              s.PayType,
-		OrderType:            1,
+		ProductType:          1,
 		IsUseBalance:         0,
 		ReceiptWithoutSku:    "1",
 		Price:                s.Order.Price,
 	}
-	packageOrder := PackageOrder{
-		Packages: []*Package{
-			&p,
-		},
-		PaymentOrder: paymentOrder,
-	}
-	s.PackageOrder = packageOrder
 }
 
 func (s *Session) UpdatePackageOrder(reserveTime ReserveTime) {
@@ -164,7 +159,7 @@ func (s *Session) CheckOrder() error {
 	params.Add("is_buy_coupons", "0")
 	params.Add("packages", string(packagesJson))
 	params.Add("check_order_type", "0")
-	params.Add("is_support_merge_payment", "1")
+	params.Add("is_support_merge_payment", "0")
 	params.Add("showData", "true")
 	params.Add("showMsg", "false")
 
@@ -192,7 +187,7 @@ func (s *Session) CreateOrder(ctx context.Context) error {
 	params.Add("package_order", string(packageOrderJson))
 	params.Add("showData", "true")
 	params.Add("showMsg", "false")
-	params.Add("ab_config", "{\"key_onion\":\"C\"}")
+	params.Add("ab_config", `{"key_onion":"C"}`)
 
 	req := s.client.R()
 	req.Header = s.buildHeader()

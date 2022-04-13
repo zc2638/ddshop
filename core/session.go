@@ -141,18 +141,33 @@ func (s *Session) buildHeader() http.Header {
 
 func (s *Session) buildURLParams(needAddress bool) url.Values {
 	params := url.Values{}
-	params.Add("api_version", "9.49.0")
-	params.Add("app_version", "2.81.0")
+	params.Add("api_version", "9.49.2")
+	params.Add("app_version", "2.82.0")
+	params.Add("app_client_id", "4")
 	params.Add("applet_source", "")
-	params.Add("app_client_id", "3")
+	params.Add("channel", "applet")
 	params.Add("h5_source", "")
 	params.Add("sharer_uid", "")
 	params.Add("s_id", "")
 	params.Add("openid", "")
+
+	params.Add("uid", s.UserID)
 	if needAddress {
+		params.Add("address_id", s.Address.Id)
 		params.Add("station_id", s.Address.StationId)
 		params.Add("city_number", s.Address.CityNumber)
+		if len(s.Address.Location.Location) == 2 {
+			params.Add("longitude", strconv.FormatFloat(s.Address.Location.Location[0], 'f', -1, 64))
+			params.Add("latitude", strconv.FormatFloat(s.Address.Location.Location[1], 'f', -1, 64))
+		}
 	}
+
+	// TODO 不知道是不是必须
+	params.Add("device_token", "")
+
+	// TODO 计算方式?
+	params.Add("nars", "")
+	params.Add("sesi", "")
 	return params
 }
 

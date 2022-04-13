@@ -32,22 +32,7 @@ type ReserveTime struct {
 
 func (s *Session) GetMultiReserveTime() ([]ReserveTime, error) {
 	urlPath := "https://maicai.api.ddxq.mobi/order/getMultiReserveTime"
-	var products []map[string]interface{}
-	for _, product := range s.Order.Products {
-		prod := map[string]interface{}{
-			"id":                   product.Id,
-			"total_money":          product.TotalPrice,
-			"total_origin_money":   product.OriginPrice,
-			"count":                product.Count,
-			"price":                product.Price,
-			"instant_rebate_money": "0.00",
-			"origin_price":         product.OriginPrice,
-		}
-		products = append(products, prod)
-	}
-	productsList := [][]map[string]interface{}{
-		products,
-	}
+	productsList := [][]Product{s.Order.Products}
 	productsJson, err := json.Marshal(productsList)
 	if err != nil {
 		return nil, fmt.Errorf("marshal products info failed: %v", err)
@@ -55,8 +40,8 @@ func (s *Session) GetMultiReserveTime() ([]ReserveTime, error) {
 
 	params := s.buildURLParams(true)
 	params.Add("group_config_id", "")
-	params.Add("products", string(productsJson))
 	params.Add("isBridge", "false")
+	params.Add("products", string(productsJson))
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
