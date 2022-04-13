@@ -23,10 +23,16 @@ go install github.com/zc2638/ddshop/cmd/ddshop@latest
 ddshop --cookie <custom-cookie>
 ```
 
-自定义请求间隔(ms)  
+自定义请求间隔(ms), 默认为 500.  
 接口连续请求的时间间隔，太频繁容易被封
 ```shell
-ddshop --cookie <custom-cookie> --interval 100
+ddshop --cookie <custom-cookie> --interval 500
+```
+
+Bark推送提醒 [点击查看详情](https://github.com/Finb/Bark)  
+使用获取到的 `bark id` 替换下面命令中的 `<custom-bark-key>`
+```shell
+ddshop --cookie <custom-cookie> --bark-key <custom-bark-key>
 ```
 
 ## 抓包

@@ -22,6 +22,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/zc2638/ddshop/pkg/notice"
+
 	"github.com/zc2638/ddshop/asserts"
 
 	"golang.org/x/sync/errgroup"
@@ -34,6 +36,7 @@ import (
 
 type Option struct {
 	Cookie   string
+	BarkKey  string
 	Interval int64
 }
 
@@ -86,19 +89,33 @@ func NewRootCommand() *cobra.Command {
 				return err
 			case <-successCh:
 				core.LoopRun(10, func() {
-					logrus.Info("抢到菜了，请速去支付!")
+					logrus.Info("抢菜成功，请尽快支付!")
 				})
+
+				go func() {
+					if opt.BarkKey == "" {
+						return
+					}
+					ins := notice.NewBark(opt.BarkKey)
+					if err := ins.Send("抢菜成功", "叮咚买菜 抢菜成功，请尽快支付！"); err != nil {
+						logrus.Warningf("Bark消息通知失败: %v", err)
+					}
+				}()
 
 				if err := asserts.Play(); err != nil {
 					logrus.Warningf("播放成功提示音乐失败: %v", err)
 				}
+				// 异步放歌，歌曲有3分钟
+				time.Sleep(3 * time.Minute)
 				return nil
 			}
 		},
 	}
 
 	cookieEnv := os.Getenv("DDSHOP_COOKIE")
+	barkKeyEnv := os.Getenv("DDSHOP_BARKKEY")
 	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
+	cmd.Flags().StringVar(&opt.BarkKey, "bark-key", barkKeyEnv, "设置bark的通知key")
 	cmd.Flags().Int64Var(&opt.Interval, "interval", 500, "设置请求间隔时间(ms)，默认为100")
 	return cmd
 }
