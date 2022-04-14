@@ -1,9 +1,14 @@
-name: Go-release
+name: DDSHOP-release
 
 on:
   push:
     tags:
       - v*
+
+env:
+  DockerRepo: a526102465/ddshop
+  Dockerfile: build/Dockerfile
+  Dockerfile-darwin: build/darwin.Dockerfile
 
 jobs:
 
@@ -37,16 +42,8 @@ jobs:
         with:
           go-version: ${{ matrix.go_version }}
 
-      - name: download
+      - name: Mod download
         run: go mod download
-
-#      - name: Build
-#        run: |
-#          CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_darwin_amd64 github.com/zc2638/ddshop/cmd/ddshop
-#          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags="-w -s" -o release/ddshop_darwin_arm64 github.com/zc2638/ddshop/cmd/ddshop
-#          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_linux_amd64 github.com/zc2638/ddshop/cmd/ddshop
-#          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -ldflags="-w -s" -o release/ddshop_linux_arm64 github.com/zc2638/ddshop/cmd/ddshop
-#          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -o release/ddshop_windows_amd64.exe github.com/zc2638/ddshop/cmd/ddshop
 
       - run: |
           mkdir -p build
@@ -79,17 +76,108 @@ jobs:
           tar -zcvf ddshop_darwin_arm64.tar.gz ddshop_darwin_arm64
           tar -zcvf ddshop_linux_amd64.tar.gz ddshop_linux_amd64
           zip -q -r ddshop_windows_amd64.zip ddshop_windows_amd64.exe
-#          not support
-#          mv $GITHUB_WORKSPACE/build/ddshop-linux-arm64 release/ddshop_linux_arm64 && chmod +x release/ddshop_linux_arm64
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             release/ddshop_linux_amd64.tar.gz
-            release/ddshop_linux_arm64.tar.gz
             release/ddshop_windows_amd64.zip
             release/ddshop_darwin_amd64.tar.gz
             release/ddshop_darwin_arm64.tar.gz
-#       env:
-#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Prepare
+        id: prepare
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          DATE=$(date +'%Y-%m-%d_%H-%M-%S')
+          echo ::set-output name=full_tag_name::${TAG}
+          echo ::set-output name=latest_tag::latest
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_SECRET }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          builder: ${{ steps.buildx.outputs.name }}
+          file: ${{ env.Dockerfile }}
+          platforms: linux/amd64,linux/arm64,linux/arm
+          cache-from: type=gha,scope=${{ github.workflow }}
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}
+          tags: |
+            ${{ env.DockerRepo }}:${{ steps.prepare.outputs.full_tag_name }}
+            ${{ env.DockerRepo }}:${{ steps.prepare.outputs.latest_tag }}
+
+#  darwin-release:
+#    runs-on: macos-latest
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      - name: Prepare
+#        id: prepare
+#        run: |
+#          TAG=${GITHUB_REF#refs/tags/}
+#          DATE=$(date +'%Y-%m-%d_%H-%M-%S')
+#          echo ::set-output name=full_tag_name::${TAG}
+#          echo ::set-output name=latest_tag::latest
+#
+#      - name: Set up Docker
+#        uses: docker-practice/actions-setup-docker@master
+#
+#      - name: Login to Docker Hub
+#        uses: docker/login-action@v1
+#        with:
+#          username: ${{ secrets.DOCKER_USER }}
+#          password: ${{ secrets.DOCKER_SECRET }}
+#
+#      - name: Build and push darwin
+#        run: |
+#          docker buildx build -f ${{ env.Dockerfile-darwin }} \
+#          --platform linux/arm64 \
+#          --cache-from type=gha,scope=${{ github.workflow }} \
+#          -t ${{ env.DockerRepo }}:${{ steps.prepare.outputs.full_tag_name }}-darwin \
+#          -t ${{ env.DockerRepo }}:${{ steps.prepare.outputs.latest_tag }}-darwin \
+#          --push .
+#
+#  combine:
+#    runs-on: ubuntu-latest
+#    needs:
+#      - docker-release
+#      - darwin-release
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      - name: Prepare
+#        id: prepare
+#        run: |
+#          TAG=${GITHUB_REF#refs/tags/}
+#          DATE=$(date +'%Y-%m-%d_%H-%M-%S')
+#          echo ::set-output name=full_tag_name::${TAG}
+#          echo ::set-output name=latest_tag::latest
+#
+#      - name: Combination image bash script
+#        shell: bash
+#        env:
+#          REPOSITORY: ${{ env.DockerRepo }}
+#          TAG: ${{ steps.prepare.outputs.full_tag_name }},${{ steps.prepare.outputs.latest_tag }}
+#        run: |
+#          chmod +x ./build/combine-image.sh
+#          ./build/combine-image.sh

@@ -1,4 +1,4 @@
-FROM golang:1.17 as builder
+FROM arm64v8/golang:1.17 as builder
 
 RUN apt-get update && apt-get install -y libasound2-dev
 
@@ -7,7 +7,7 @@ ENV GO111MODULE=on
 
 WORKDIR /work
 ADD . .
-RUN GOOS=linux CGO_ENABLED=1 go build -ldflags="-w -s" -o /usr/local/bin/ddshop github.com/zc2638/ddshop/cmd/ddshop
+RUN CGO_ENABLED=1 go build -ldflags="-w -s" -o /usr/local/bin/ddshop github.com/zc2638/ddshop/cmd/ddshop
 
 FROM alpine:3.6
 MAINTAINER zc
