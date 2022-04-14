@@ -5,14 +5,9 @@ RUN apt-get update && apt-get install -y libasound2-dev
 ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
 ENV GO111MODULE=on
 
-WORKDIR /go/cache
-ADD go.mod .
-ADD go.sum .
-RUN go mod download
-
 WORKDIR /work
 ADD . .
-RUN GOOS=linux CGO_ENABLED=1 GOARCH=amd64 go build -ldflags="-w -s" -o /usr/local/bin/ddshop github.com/zc2638/ddshop/cmd/ddshop
+RUN GOOS=linux CGO_ENABLED=1 go build -ldflags="-w -s" -o /usr/local/bin/ddshop github.com/zc2638/ddshop/cmd/ddshop
 
 FROM alpine:3.6
 MAINTAINER zc
