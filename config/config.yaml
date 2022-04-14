@@ -1,0 +1,9 @@
+cookie: ""
+interval: 100      # 连续发起请求间隔时间(ms)
+payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat
+barkKey: ""        # Bark 通知推送的 Key
+#periods:           # 抢购时间段
+#  - start: "05:59"
+#    end: "06:10"
+#  - start: "08:29"
+#    end: "08:35"

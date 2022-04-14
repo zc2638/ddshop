@@ -14,15 +14,20 @@
 
 package core
 
-type Error string
-
-func (e Error) Error() string {
-	return string(e)
+type Config struct {
+	Cookie   string       `json:"cookie"`
+	Interval int64        `json:"interval"`
+	PayType  string       `json:"payType"`
+	BarkKey  string       `json:"barkKey"`
+	Periods  []TimePeriod `json:"periods"`
 }
 
-const (
-	ErrorOutPeriod = Error("当前时间段未抢到")
+type TimePeriod struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
 
-	ErrorNoValidProduct = Error("无有效商品")
-	ErrorNoReserveTime  = Error("无可预约时间段")
-)
+	startHour   int
+	startMinute int
+	endHour     int
+	endMinute   int
+}

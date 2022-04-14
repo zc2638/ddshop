@@ -15,183 +15,68 @@
 package app
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"math/rand"
 	"os"
-	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
+	"github.com/spf13/viper"
 
-	"github.com/zc2638/ddshop/asserts"
+	"github.com/pkgms/go/server"
+
+	"github.com/spf13/cobra"
+
 	"github.com/zc2638/ddshop/core"
-	"github.com/zc2638/ddshop/pkg/notice"
 )
 
 type Option struct {
+	Config   string
 	Cookie   string
 	BarkKey  string
 	PayType  string
 	Interval int64
 }
 
-var (
-	successCh = make(chan struct{}, 1)
-	errCh     = make(chan error, 1)
-)
-
 func NewRootCommand() *cobra.Command {
 	opt := &Option{}
 	cmd := &cobra.Command{
 		Use:          "ddshop",
-		Short:        "Ding Dong grocery shopping automatic order program",
+		Short:        "叮咚买菜自动抢购下单程序",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opt.Cookie == "" {
+			cfg := &core.Config{
+				Cookie:   opt.Cookie,
+				Interval: opt.Interval,
+				BarkKey:  opt.BarkKey,
+				PayType:  opt.PayType,
+			}
+			if opt.Config != "" {
+				viper.SetConfigType("yaml")
+				if err := server.ParseConfigWithEnv(opt.Config, cfg, "DDSHOP"); err != nil {
+					return err
+				}
+			} else {
+				logrus.Warning("未设置配置文件，使用参数解析")
+			}
+			if cfg.Cookie == "" {
 				return errors.New("请输入用户Cookie.\n你可以执行此命令 `ddshop --cookie xxx` 或者 `DDSHOP_COOKIE=xxx ddshop`")
 			}
 
-			session := core.NewSession(opt.Cookie, opt.Interval)
-			if err := session.GetUser(); err != nil {
-				return fmt.Errorf("获取用户信息失败: %v", err)
-			}
-			if err := session.Choose(opt.PayType); err != nil {
+			session, err := core.NewSession(cfg)
+			if err != nil {
 				return err
 			}
-			fmt.Println()
-
-			ctx, cancelFunc := context.WithCancel(context.Background())
-			go func() {
-				for {
-					select {
-					case <-ctx.Done():
-						logrus.Warningf("context done")
-						return
-					default:
-					}
-					if err := Start(session); err != nil {
-						switch err {
-						case core.ErrorNoValidProduct:
-							logrus.Error("购物车中无有效商品，请先前往app添加或勾选！")
-							errCh <- err
-							return
-						case core.ErrorNoReserveTime:
-							sleepInterval := 3 + rand.Intn(6)
-							logrus.Warningf("暂无可预约的时间，%d 秒后重试！", sleepInterval)
-							time.Sleep(time.Duration(sleepInterval) * time.Second)
-						default:
-							logrus.Error(err)
-						}
-						fmt.Println()
-					}
-				}
-			}()
-
-			select {
-			case resultErr := <-errCh:
-				cancelFunc()
-				go func() {
-					if opt.BarkKey == "" {
-						return
-					}
-					ins := notice.NewBark(opt.BarkKey)
-					if err := ins.Send("抢菜异常", resultErr.Error()); err != nil {
-						logrus.Warningf("Bark消息通知失败: %v", err)
-					}
-				}()
-				return resultErr
-			case <-successCh:
-				cancelFunc()
-				core.LoopRun(10, func() {
-					logrus.Info("抢菜成功，请尽快支付!")
-				})
-
-				go func() {
-					if opt.BarkKey == "" {
-						return
-					}
-					ins := notice.NewBark(opt.BarkKey)
-					if err := ins.Send("抢菜成功", "叮咚买菜 抢菜成功，请尽快支付！"); err != nil {
-						logrus.Warningf("Bark消息通知失败: %v", err)
-					}
-				}()
-
-				if err := asserts.Play(); err != nil {
-					logrus.Warningf("播放成功提示音乐失败: %v", err)
-				}
-				// 异步放歌，歌曲有3分钟
-				time.Sleep(3 * time.Minute)
-				return nil
-			}
+			return session.Start()
 		},
 	}
 
+	configEnv := os.Getenv("DDSHOP_CONFIG")
 	cookieEnv := os.Getenv("DDSHOP_COOKIE")
 	barkKeyEnv := os.Getenv("DDSHOP_BARKKEY")
 	payTypeEnv := os.Getenv("DDSHOP_PAYTYPE")
+	cmd.Flags().StringVarP(&opt.Config, "config", "c", configEnv, "设置配置文件路径")
 	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
 	cmd.Flags().StringVar(&opt.BarkKey, "bark-key", barkKeyEnv, "设置bark的通知key")
 	cmd.Flags().StringVar(&opt.PayType, "pay-type", payTypeEnv, "设置支付方式，支付宝、微信、alipay、wechat")
-	cmd.Flags().Int64Var(&opt.Interval, "interval", 500, "设置请求间隔时间(ms)，默认为100")
+	cmd.Flags().Int64Var(&opt.Interval, "interval", 100, "设置请求间隔时间(ms)，默认为100")
 	return cmd
-}
-
-func Start(session *core.Session) error {
-	logrus.Info("=====> 获取购物车中有效商品")
-
-	if err := session.CartAllCheck(); err != nil {
-		return fmt.Errorf("全选购物车商品失败: %v", err)
-	}
-	cartData, err := session.GetCart()
-	if err != nil {
-		return err
-	}
-
-	products := cartData["products"].([]map[string]interface{})
-	for k, v := range products {
-		logrus.Infof("[%v] %s 数量：%v 总价：%s", k, v["product_name"], v["count"], v["total_price"])
-	}
-
-	for {
-		logrus.Info("=====> 获取可预约时间")
-		multiReserveTime, err := session.GetMultiReserveTime(products)
-		if err != nil {
-			return fmt.Errorf("获取可预约时间失败: %v", err)
-		}
-		if len(multiReserveTime) == 0 {
-			return core.ErrorNoReserveTime
-		}
-		logrus.Infof("发现可用的配送时段!")
-
-		logrus.Info("=====> 生成订单信息")
-		checkOrderData, err := session.CheckOrder(cartData, multiReserveTime)
-		if err != nil {
-			return fmt.Errorf("检查订单失败: %v", err)
-		}
-		logrus.Infof("订单总金额：%v\n", checkOrderData["price"])
-
-		var wg errgroup.Group
-		for _, reserveTime := range multiReserveTime {
-			sess := session.Clone()
-			sess.SetReserve(reserveTime)
-			wg.Go(func() error {
-				startTime := time.Unix(int64(sess.Reserve.StartTimestamp), 0).Format("2006/01/02 15:04:05")
-				endTime := time.Unix(int64(sess.Reserve.EndTimestamp), 0).Format("2006/01/02 15:04:05")
-				timeRange := startTime + "——" + endTime
-				logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
-				if err := sess.CreateOrder(context.Background(), cartData, checkOrderData); err != nil {
-					logrus.Warningf("提交订单(%s)失败: %v", timeRange, err)
-					return err
-				}
-
-				successCh <- struct{}{}
-				return nil
-			})
-		}
-		_ = wg.Wait()
-		return nil
-	}
 }
