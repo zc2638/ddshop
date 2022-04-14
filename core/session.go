@@ -95,6 +95,10 @@ func (s *Session) Clone() *Session {
 }
 
 func (s *Session) execute(ctx context.Context, request *resty.Request, method, url string) (*resty.Response, error) {
+	return s.executeRetry(ctx, request, method, url, 1)
+}
+
+func (s *Session) executeRetry(ctx context.Context, request *resty.Request, method, url string, frequency int) (*resty.Response, error) {
 	if ctx != nil {
 		request.SetContext(ctx)
 	}
@@ -113,12 +117,18 @@ func (s *Session) execute(ctx context.Context, request *resty.Request, method, u
 		return resp, nil
 	case -3000, -3001:
 		logrus.Warningf("当前人多拥挤(%v): %s", code, resp.String())
+	case -3100:
+		logrus.Warningf("当前页面拥挤(%v): %s", code, resp.String())
+		logrus.Warningf("将在 %dms 后重试", s.interval)
+		time.Sleep(time.Duration(s.interval) * time.Millisecond)
 	default:
-		return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
+		if frequency > 15 {
+			return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
+		}
+		logrus.Warningf("尝试次数: %d, 无法识别的状态码: %v", frequency, resp.String())
 	}
-	logrus.Warningf("将在 %dms 后重试", s.interval)
-	time.Sleep(time.Duration(s.interval) * time.Millisecond)
-	return s.execute(nil, request, method, url)
+	frequency++
+	return s.executeRetry(nil, request, method, url, frequency)
 }
 
 func (s *Session) buildHeader() http.Header {

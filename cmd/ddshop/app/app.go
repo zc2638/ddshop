@@ -91,9 +91,18 @@ func NewRootCommand() *cobra.Command {
 			}()
 
 			select {
-			case err := <-errCh:
+			case resultErr := <-errCh:
 				cancelFunc()
-				return err
+				go func() {
+					if opt.BarkKey == "" {
+						return
+					}
+					ins := notice.NewBark(opt.BarkKey)
+					if err := ins.Send("抢菜异常", resultErr.Error()); err != nil {
+						logrus.Warningf("Bark消息通知失败: %v", err)
+					}
+				}()
+				return resultErr
 			case <-successCh:
 				cancelFunc()
 				core.LoopRun(10, func() {
@@ -122,9 +131,10 @@ func NewRootCommand() *cobra.Command {
 
 	cookieEnv := os.Getenv("DDSHOP_COOKIE")
 	barkKeyEnv := os.Getenv("DDSHOP_BARKKEY")
+	payTypeEnv := os.Getenv("DDSHOP_PAYTYPE")
 	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
 	cmd.Flags().StringVar(&opt.BarkKey, "bark-key", barkKeyEnv, "设置bark的通知key")
-	cmd.Flags().StringVar(&opt.PayType, "pay-type", "", "设置支付方式，支付宝、微信、alipay、wechat")
+	cmd.Flags().StringVar(&opt.PayType, "pay-type", payTypeEnv, "设置支付方式，支付宝、微信、alipay、wechat")
 	cmd.Flags().Int64Var(&opt.Interval, "interval", 500, "设置请求间隔时间(ms)，默认为100")
 	return cmd
 }
