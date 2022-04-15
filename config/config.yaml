@@ -8,7 +8,14 @@ regular:
       end: "06:10"
     - start: "08:29"
       end: "08:35"
+# 当叮咚和每日优鲜均设置，只会运行叮咚买菜抢购
 ddmc:
   cookie: ""
+  interval: 100      # 连续发起请求间隔时间(ms)
+  payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat
+missfresh:
+  token: ""
+  device_id: ""
+  device_center_id: ""
   interval: 100      # 连续发起请求间隔时间(ms)
   payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat

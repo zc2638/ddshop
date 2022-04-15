@@ -19,6 +19,11 @@ import (
 	"errors"
 	"os"
 
+	"github.com/pkgms/go/server"
+	"github.com/spf13/viper"
+
+	"github.com/zc2638/ddshop/core/missfresh"
+
 	"github.com/zc2638/ddshop/asserts"
 
 	"github.com/zc2638/ddshop/pkg/notice"
@@ -27,23 +32,20 @@ import (
 
 	"github.com/zc2638/ddshop/core/ddmc"
 
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-
-	"github.com/pkgms/go/server"
-
 	"github.com/spf13/cobra"
 )
 
 type Config struct {
-	Bark    notice.BarkConfig `json:"bark"`
-	Regular regular.Config    `json:"regular"`
-	DDMC    ddmc.Config       `json:"ddmc"`
+	Bark      notice.BarkConfig `json:"bark"`
+	Regular   regular.Config    `json:"regular"`
+	DDMC      ddmc.Config       `json:"ddmc"`
+	Missfresh missfresh.Config  `json:"missfresh"`
 }
 
 type Option struct {
 	ConfigPath string
 	Cookie     string
+	Token      string
 	BarkKey    string
 	PayType    string
 	Interval   int64
@@ -63,6 +65,11 @@ func (o *Option) Config() *Config {
 		Bark: notice.BarkConfig{
 			Key: o.BarkKey,
 		},
+		Missfresh: missfresh.Config{
+			Token:    o.Token,
+			Interval: o.Interval,
+			PayType:  o.PayType,
+		},
 	}
 }
 
@@ -74,27 +81,33 @@ func NewRootCommand() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := opt.Config()
-			if opt.ConfigPath != "" {
-				viper.SetConfigType("yaml")
-				if err := server.ParseConfigWithEnv(opt.ConfigPath, cfg, "DDSHOP"); err != nil {
-					return err
-				}
-			} else {
-				logrus.Warning("未设置配置文件，使用参数解析")
+			if opt.ConfigPath == "" {
+				return errors.New("未设置配置文件")
 			}
-			if cfg.DDMC.Cookie == "" {
-				return errors.New("请输入用户Cookie.\n你可以执行此命令 `ddshop --cookie xxx` 或者 `DDSHOP_COOKIE=xxx ddshop`")
+			viper.SetConfigType("yaml")
+			err := server.ParseConfigWithEnv(opt.ConfigPath, cfg, "DDSHOP")
+			if err != nil {
+				return err
 			}
 
 			bark := notice.NewBark(&cfg.Bark)
 			music := notice.NewMusic(asserts.NoticeMP3, 180)
 			noticeIns := notice.New(notice.NewLog(), bark, music)
 
-			session, err := ddmc.NewSession(&cfg.DDMC, noticeIns)
-			if err != nil {
-				return err
+			var session regular.TaskInterface
+			if cfg.DDMC.Cookie != "" {
+				session, err = ddmc.NewSession(&cfg.DDMC, noticeIns)
+				if err != nil {
+					return err
+				}
+			} else if cfg.Missfresh.Token != "" {
+				session, err = missfresh.NewSession(&cfg.Missfresh, noticeIns)
+				if err != nil {
+					return err
+				}
+			} else {
+				return errors.New("cookie和token均未设置，不执行抢购程序")
 			}
-
 			engine, err := regular.New(&cfg.Regular)
 			if err != nil {
 				return err
@@ -104,13 +117,6 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	configEnv := os.Getenv("DDSHOP_CONFIG")
-	cookieEnv := os.Getenv("DDSHOP_COOKIE")
-	barkKeyEnv := os.Getenv("DDSHOP_BARKKEY")
-	payTypeEnv := os.Getenv("DDSHOP_PAYTYPE")
 	cmd.Flags().StringVarP(&opt.ConfigPath, "config", "c", configEnv, "设置配置文件路径")
-	cmd.Flags().StringVar(&opt.Cookie, "cookie", cookieEnv, "设置用户个人cookie")
-	cmd.Flags().StringVar(&opt.BarkKey, "bark-key", barkKeyEnv, "设置bark的通知key")
-	cmd.Flags().StringVar(&opt.PayType, "pay-type", payTypeEnv, "设置支付方式，支付宝、微信、alipay、wechat")
-	cmd.Flags().Int64Var(&opt.Interval, "interval", 100, "设置请求间隔时间(ms)，默认为100")
 	return cmd
 }
