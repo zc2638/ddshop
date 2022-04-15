@@ -25,10 +25,10 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/zc2638/ddshop/asserts"
 	"github.com/zc2638/ddshop/pkg/notice"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/go-resty/resty/v2"
@@ -59,11 +59,10 @@ func NewSession(cfg *Config) (*Session, error) {
 
 	header := make(http.Header)
 	header.Set("Host", "maicai.api.ddxq.mobi")
-	header.Set("user-agent", "Mozilla/5.0 (Linux; Android 9; LIO-AN00 Build/LIO-AN00; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/92.0.4515.131 Mobile Safari/537.36 xzone/9.47.0 station_id/null")
+	header.Set("user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 11_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E217 MicroMessenger/6.8.0(0x16080000) NetType/WIFI Language/en Branch/Br_trunk MiniProgramEnv/Mac")
 	header.Set("accept", "application/json, text/plain, */*")
 	header.Set("content-type", "application/x-www-form-urlencoded")
 	header.Set("origin", "https://wx.m.ddxq.mobi")
-	header.Set("x-requested-with", "com.yaya.zone")
 	header.Set("sec-fetch-site", "same-site")
 	header.Set("sec-fetch-mode", "cors")
 	header.Set("sec-fetch-dest", "empty")
@@ -275,7 +274,7 @@ func (s *Session) run() error {
 				timeRange := startTime + "——" + endTime
 				logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
 				if err := sess.CreateOrder(context.Background(), cartData, checkOrderData); err != nil {
-					logrus.Warningf("提交订单(%s)失败: %v", timeRange, err)
+					logrus.Errorf("提交订单(%s)失败: %v", timeRange, err)
 					return err
 				}
 
@@ -326,11 +325,19 @@ func (s *Session) executeRetry(ctx context.Context, request *resty.Request, meth
 	switch code {
 	case 0:
 		return resp, nil
-	case -3000, -3001:
-		logrus.Warningf("当前人多拥挤(%v): %s", code, resp.String())
-	case -3100:
-		logrus.Warningf("当前页面拥挤(%v): %s", code, resp.String())
-		logrus.Warningf("将在 %dms 后重试", s.cfg.Interval)
+	case -3000:
+		msg := result.Get("msg").Str
+		logrus.Warningf("当前人多拥挤(%v): %s", code, msg)
+	case -3001: // 创建订单
+		msg := result.Get("tips.limitMsg").Str
+		if frequency/2 > 15 {
+			return nil, fmt.Errorf("当前人多拥挤(%v): %s", code, msg)
+		}
+		logrus.Warningf("将在 %dms 后重试, 当前人多拥挤(%v): %s", s.cfg.Interval, code, msg)
+		time.Sleep(time.Duration(s.cfg.Interval) * time.Millisecond)
+	case -3100: // 检查订单
+		msg := result.Get("tips.limitMsg").Str
+		logrus.Warningf("将在 %dms 后重试, 当前页面拥挤(%v): %s", s.cfg.Interval, code, msg)
 		time.Sleep(time.Duration(s.cfg.Interval) * time.Millisecond)
 	default:
 		if frequency > 15 {
