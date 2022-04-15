@@ -12,10 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package notice
 
-func LoopRun(num int, f func()) {
-	for i := 0; i < num; i++ {
-		f()
-	}
+import (
+	"github.com/sirupsen/logrus"
+
+	"github.com/zc2638/ddshop/pkg/util"
+)
+
+func NewLog() Engine {
+	return &log{}
+}
+
+type log struct{}
+
+func (l *log) Name() string {
+	return "log"
+}
+
+func (l *log) Send(title, body string) error {
+	util.LoopRun(10, func() {
+		logrus.Infof("%s: %s", title, body)
+	})
+	return nil
 }

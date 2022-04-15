@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package ddmc
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"net/url"
 )
 
-func (s *Session) CartAllCheck() error {
+func (s *Session) CartAllCheck(ctx context.Context) error {
 	u, err := url.Parse("https://maicai.api.ddxq.mobi/cart/allCheck")
 	if err != nil {
 		return fmt.Errorf("cart url parse failed: %v", err)
@@ -35,11 +35,11 @@ func (s *Session) CartAllCheck() error {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	_, err = s.execute(context.Background(), req, http.MethodGet, urlPath)
+	_, err = s.execute(ctx, req, http.MethodGet, urlPath, maxRetryCount)
 	return err
 }
 
-func (s *Session) GetCart() (map[string]interface{}, error) {
+func (s *Session) GetCart(ctx context.Context) (map[string]interface{}, error) {
 	u, err := url.Parse("https://maicai.api.ddxq.mobi/cart/index")
 	if err != nil {
 		return nil, fmt.Errorf("获取购物车商品，请求URL解析失败: %v", err)
@@ -53,7 +53,7 @@ func (s *Session) GetCart() (map[string]interface{}, error) {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath)
+	resp, err := s.execute(ctx, req, http.MethodGet, urlPath, maxRetryCount)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +68,7 @@ func (s *Session) GetCart() (map[string]interface{}, error) {
 	if len(list) == 0 {
 		return nil, ErrorNoValidProduct
 	}
+
 	item := list[0].(map[string]interface{})
 
 	productList := item["products"].([]interface{})

@@ -1,9 +1,14 @@
-cookie: ""
-interval: 100      # 连续发起请求间隔时间(ms)
-payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat
-barkKey: ""        # Bark 通知推送的 Key
-#periods:           # 抢购时间段
-#  - start: "05:59"
-#    end: "06:10"
-#  - start: "08:29"
-#    end: "08:35"
+bark:
+  key: ""               # Bark 通知推送的 Key
+regular:
+  success_interval: 100 # 执行成功 再次执行的间隔时间(ms), -1为停止继续执行
+  fail_interval: 100    # 执行失败 再次执行的间隔时间(ms), -1为停止继续执行
+  periods: # 执行周期
+    - start: "05:59"
+      end: "06:10"
+    - start: "08:29"
+      end: "08:35"
+ddmc:
+  cookie: ""
+  interval: 100      # 连续发起请求间隔时间(ms)
+  payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat

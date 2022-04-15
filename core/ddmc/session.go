@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package ddmc
 
 import (
 	"context"
@@ -25,9 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
-	"github.com/zc2638/ddshop/asserts"
 	"github.com/zc2638/ddshop/pkg/notice"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -36,22 +33,14 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func NewSession(cfg *Config) (*Session, error) {
-	for k, v := range cfg.Periods {
-		start, err := time.Parse("15:04", v.Start)
-		if err != nil {
-			return nil, fmt.Errorf("解析时间段 %d 开始时间(%s)失败: %v", k, v.Start, err)
-		}
-		end, err := time.Parse("15:04", v.End)
-		if err != nil {
-			return nil, fmt.Errorf("解析时间段 %d 结束时间(%s)失败: %v", k, v.Start, err)
-		}
-		cfg.Periods[k].startHour = start.Hour()
-		cfg.Periods[k].startMinute = start.Minute()
-		cfg.Periods[k].endHour = end.Hour()
-		cfg.Periods[k].endMinute = end.Minute()
-	}
+const maxRetryCount = 100
 
+var (
+	ErrorNoValidProduct = errors.New("无有效商品")
+	ErrorNoReserveTime  = errors.New("无可预约时间段")
+)
+
+func NewSession(cfg *Config, noticeIns notice.Interface) (*Session, error) {
 	cookie := cfg.Cookie
 	if !strings.HasPrefix(cookie, "DDXQSESSID=") {
 		cookie = "DDXQSESSID=" + cookie
@@ -72,8 +61,10 @@ func NewSession(cfg *Config) (*Session, error) {
 
 	client := resty.New()
 	client.Header = header
-	return &Session{
+
+	sess := &Session{
 		cfg:       cfg,
+		noticeIns: noticeIns,
 		client:    client,
 		successCh: make(chan struct{}, 1),
 		stopCh:    make(chan struct{}, 1),
@@ -82,11 +73,20 @@ func NewSession(cfg *Config) (*Session, error) {
 		appVersion:  "2.82.0",
 		channel:     "applet",
 		appClientID: "4",
-	}, nil
+	}
+
+	if err := sess.GetUser(); err != nil {
+		return nil, fmt.Errorf("获取用户信息失败: %v", err)
+	}
+	if err := sess.Choose(); err != nil {
+		return nil, err
+	}
+	return sess, nil
 }
 
 type Session struct {
 	cfg       *Config
+	noticeIns notice.Interface
 	client    *resty.Client
 	successCh chan struct{}
 	stopCh    chan struct{}
@@ -102,141 +102,32 @@ type Session struct {
 	Reserve ReserveTime
 }
 
-func (s *Session) Start() error {
-	if len(s.cfg.Periods) == 0 {
-		return s.start()
-	}
-
-	for {
-		second := time.Now().Second()
-		if second == 0 {
-			break
+func (s *Session) Run(ctx context.Context) error {
+	err := s.run(ctx)
+	if err != nil {
+		switch err {
+		case ErrorNoValidProduct:
+			sleepInterval := 30
+			logrus.Errorf("购物车中无有效商品，请先前往app添加或勾选，%d 秒后重试！", sleepInterval)
+			time.Sleep(time.Duration(sleepInterval) * time.Second)
+		case ErrorNoReserveTime:
+			sleepInterval := 3 + rand.Intn(6)
+			logrus.Warningf("暂无可预约的时间，%d 秒后重试！", sleepInterval)
+			time.Sleep(time.Duration(sleepInterval) * time.Second)
+		default:
+			logrus.Error(err)
 		}
-		sleepInterval := 60 - second
-		logrus.Warningf("当前秒数不为 0，需等待 %d 秒后开启自动助手", sleepInterval)
-		time.Sleep(time.Duration(sleepInterval) * time.Second)
 	}
-
-	currentStartHour, currentStartMinute := -1, -1
-
-	ticker := time.NewTicker(time.Minute)
-	for {
-		logrus.Warningf("开始任务侦查")
-		now := time.Now()
-		hour := now.Hour()
-		minute := now.Minute()
-
-		for _, v := range s.cfg.Periods {
-			if currentStartHour > -1 && (currentStartHour != v.startHour || currentStartMinute != v.startMinute) {
-				continue
-			}
-
-			start := false
-			end := false
-			if v.startHour > hour {
-				start = true
-			}
-			if v.startHour == hour && v.startMinute <= minute {
-				start = true
-			}
-			if v.endHour < hour {
-				end = true
-			}
-			if v.endHour == hour && v.endMinute <= minute {
-				end = true
-			}
-
-			if start && !end && currentStartHour != v.startHour {
-				if len(s.stopCh) > 0 {
-					s.stopCh = make(chan struct{}, 1)
-				}
-				go s.start()
-				currentStartHour = v.startHour
-				currentStartMinute = v.startMinute
-				break
-			}
-			if start && end {
-				if len(s.stopCh) == 0 {
-					s.stopCh <- struct{}{}
-				}
-			}
-		}
-		<-ticker.C
-	}
+	return err
 }
 
-func (s *Session) start() error {
-	if err := s.GetUser(); err != nil {
-		return fmt.Errorf("获取用户信息失败: %v", err)
-	}
-	if err := s.Choose(); err != nil {
-		return err
-	}
-	fmt.Println()
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				logrus.Warningf("context done")
-				return
-			default:
-			}
-			if err := s.run(); err != nil {
-				switch err {
-				case ErrorNoValidProduct:
-					sleepInterval := 30
-					logrus.Errorf("购物车中无有效商品，请先前往app添加或勾选，%d 秒后重试！", sleepInterval)
-					time.Sleep(time.Duration(sleepInterval) * time.Second)
-				case ErrorNoReserveTime:
-					sleepInterval := 3 + rand.Intn(6)
-					logrus.Warningf("暂无可预约的时间，%d 秒后重试！", sleepInterval)
-					time.Sleep(time.Duration(sleepInterval) * time.Second)
-				default:
-					logrus.Error(err)
-				}
-				fmt.Println()
-			}
-		}
-	}()
-	select {
-	case <-s.stopCh:
-		cancelFunc()
-		logrus.Error("当前时间段内未抢到，等待下个时间段")
-		return ErrorOutPeriod
-	case <-s.successCh:
-		cancelFunc()
-		LoopRun(10, func() {
-			logrus.Info("抢菜成功，请尽快支付!")
-		})
-
-		go func() {
-			if s.cfg.BarkKey == "" {
-				return
-			}
-			ins := notice.NewBark(s.cfg.BarkKey)
-			if err := ins.Send("抢菜成功", "叮咚买菜 抢菜成功，请尽快支付！"); err != nil {
-				logrus.Warningf("Bark消息通知失败: %v", err)
-			}
-		}()
-
-		if err := asserts.Play(); err != nil {
-			logrus.Warningf("播放成功提示音乐失败: %v", err)
-		}
-		// 异步放歌，歌曲有3分钟
-		time.Sleep(3 * time.Minute)
-		return nil
-	}
-}
-
-func (s *Session) run() error {
+func (s *Session) run(ctx context.Context) error {
 	logrus.Info("=====> 获取购物车中有效商品")
 
-	if err := s.CartAllCheck(); err != nil {
+	if err := s.CartAllCheck(ctx); err != nil {
 		return fmt.Errorf("全选购物车商品失败: %v", err)
 	}
-	cartData, err := s.GetCart()
+	cartData, err := s.GetCart(ctx)
 	if err != nil {
 		return err
 	}
@@ -248,41 +139,38 @@ func (s *Session) run() error {
 
 	for {
 		logrus.Info("=====> 获取可预约时间")
-		multiReserveTime, err := s.GetMultiReserveTime(products)
+		multiReserveTime, err := s.GetMultiReserveTime(ctx, products)
 		if err != nil {
 			return fmt.Errorf("获取可预约时间失败: %v", err)
 		}
+
 		if len(multiReserveTime) == 0 {
 			return ErrorNoReserveTime
 		}
 		logrus.Infof("发现可用的配送时段!")
 
 		logrus.Info("=====> 生成订单信息")
-		checkOrderData, err := s.CheckOrder(cartData, multiReserveTime)
+		checkOrderData, err := s.CheckOrder(ctx, cartData, multiReserveTime)
 		if err != nil {
 			return fmt.Errorf("检查订单失败: %v", err)
 		}
 		logrus.Infof("订单总金额：%v\n", checkOrderData["price"])
 
-		var wg errgroup.Group
-		for _, reserveTime := range multiReserveTime {
-			sess := s.Clone()
-			sess.SetReserve(reserveTime)
-			wg.Go(func() error {
-				startTime := time.Unix(int64(sess.Reserve.StartTimestamp), 0).Format("2006/01/02 15:04:05")
-				endTime := time.Unix(int64(sess.Reserve.EndTimestamp), 0).Format("2006/01/02 15:04:05")
-				timeRange := startTime + "——" + endTime
-				logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
-				if err := sess.CreateOrder(context.Background(), cartData, checkOrderData); err != nil {
-					logrus.Errorf("提交订单(%s)失败: %v", timeRange, err)
-					return err
-				}
+		sess := s.Clone()
+		sess.SetReserve(multiReserveTime[0])
 
-				s.successCh <- struct{}{}
-				return nil
-			})
+		startTime := time.Unix(int64(sess.Reserve.StartTimestamp), 0).Format("2006/01/02 15:04:05")
+		endTime := time.Unix(int64(sess.Reserve.EndTimestamp), 0).Format("2006/01/02 15:04:05")
+		timeRange := startTime + "——" + endTime
+		logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
+		if err := sess.CreateOrder(context.Background(), cartData, checkOrderData); err != nil {
+			logrus.Errorf("提交订单(%s)失败: %v", timeRange, err)
+			return err
 		}
-		_ = wg.Wait()
+
+		if err := s.noticeIns.Notice("抢菜成功", "叮咚买菜 抢菜成功，请尽快支付！"); err != nil {
+			logrus.Warningf("通知失败: %v", err)
+		}
 		return nil
 	}
 }
@@ -304,11 +192,7 @@ func (s *Session) Clone() *Session {
 	}
 }
 
-func (s *Session) execute(ctx context.Context, request *resty.Request, method, url string) (*resty.Response, error) {
-	return s.executeRetry(ctx, request, method, url, 1)
-}
-
-func (s *Session) executeRetry(ctx context.Context, request *resty.Request, method, url string, frequency int) (*resty.Response, error) {
+func (s *Session) execute(ctx context.Context, request *resty.Request, method, url string, count int) (*resty.Response, error) {
 	if ctx != nil {
 		request.SetContext(ctx)
 	}
@@ -328,25 +212,21 @@ func (s *Session) executeRetry(ctx context.Context, request *resty.Request, meth
 	case -3000:
 		msg := result.Get("msg").Str
 		logrus.Warningf("当前人多拥挤(%v): %s", code, msg)
-	case -3001: // 创建订单
+	case -3001, -3100: // -3001创建订单, -3100检查订单
 		msg := result.Get("tips.limitMsg").Str
-		if frequency/2 > 15 {
-			return nil, fmt.Errorf("当前人多拥挤(%v): %s", code, msg)
+		if count <= 0 {
+			return nil, fmt.Errorf("当前拥挤(%v): %s", code, msg)
 		}
 		logrus.Warningf("将在 %dms 后重试, 当前人多拥挤(%v): %s", s.cfg.Interval, code, msg)
 		time.Sleep(time.Duration(s.cfg.Interval) * time.Millisecond)
-	case -3100: // 检查订单
-		msg := result.Get("tips.limitMsg").Str
-		logrus.Warningf("将在 %dms 后重试, 当前页面拥挤(%v): %s", s.cfg.Interval, code, msg)
-		time.Sleep(time.Duration(s.cfg.Interval) * time.Millisecond)
 	default:
-		if frequency > 15 {
+		if count <= 0 {
 			return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
 		}
-		logrus.Warningf("尝试次数: %d, 无法识别的状态码: %v", frequency, resp.String())
+		logrus.Warningf("尝试次数: %d, 无法识别的状态码: %v", count, resp.String())
 	}
-	frequency++
-	return s.executeRetry(nil, request, method, url, frequency)
+	count--
+	return s.execute(nil, request, method, url, count)
 }
 
 func (s *Session) buildHeader() http.Header {

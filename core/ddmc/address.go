@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package ddmc
 
 import (
 	"context"
@@ -98,7 +98,7 @@ func (s *Session) GetAddress() (map[string]AddressItem, error) {
 
 	req := s.client.R()
 	req.SetHeader("Host", "sunquan.api.ddxq.mobi")
-	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath)
+	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath, maxRetryCount)
 	if err != nil {
 		return nil, err
 	}

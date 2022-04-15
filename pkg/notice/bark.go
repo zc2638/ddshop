@@ -24,12 +24,20 @@ import (
 
 const barkURL = "https://api.day.app/push"
 
-func NewBark(key string) Interface {
-	return &bark{key: key}
+type BarkConfig struct {
+	Key string `json:"key"`
+}
+
+func NewBark(cfg *BarkConfig) Engine {
+	return &bark{key: cfg.Key}
 }
 
 type bark struct {
 	key string
+}
+
+func (b *bark) Name() string {
+	return "Bark"
 }
 
 func (b *bark) Send(title, body string) error {
