@@ -14,6 +14,51 @@
 
 package notice
 
-type Interface interface {
+import (
+	"errors"
+	"fmt"
+	"sync"
+)
+
+type Engine interface {
+	Name() string
 	Send(title, body string) error
+}
+
+type Interface interface {
+	Notice(title, body string) error
+}
+
+func New(engines ...Engine) Interface {
+	return &notice{engines: engines}
+}
+
+type notice struct {
+	engines []Engine
+}
+
+func (n *notice) Notice(title, body string) error {
+	var mux sync.Mutex
+	var errStr string
+
+	var wg sync.WaitGroup
+	for _, v := range n.engines {
+		wg.Add(1)
+
+		go func(engine Engine) {
+			defer wg.Done()
+
+			if err := engine.Send(title, body); err != nil {
+				mux.Lock()
+				defer mux.Unlock()
+				errStr += fmt.Sprintf("%s: %v\n", engine.Name(), err)
+			}
+		}(v)
+	}
+	wg.Wait()
+
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
 }

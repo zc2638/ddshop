@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package asserts
+package core
 
-import (
-	_ "embed"
-)
-
-// NoticeMP3 defines the content of notice.mp3
-//go:embed notice.mp3
-var NoticeMP3 []byte
+type Interface interface {
+	Start() error
+	Stop()
+}

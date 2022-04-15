@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package ddmc
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type ReserveTime struct {
 	SelectMsg      string `json:"select_msg"`
 }
 
-func (s *Session) GetMultiReserveTime(products []map[string]interface{}) ([]ReserveTime, error) {
+func (s *Session) GetMultiReserveTime(ctx context.Context, products []map[string]interface{}) ([]ReserveTime, error) {
 	urlPath := "https://maicai.api.ddxq.mobi/order/getMultiReserveTime"
 	productsList := [][]map[string]interface{}{products}
 	productsJson, err := json.Marshal(productsList)
@@ -46,7 +46,7 @@ func (s *Session) GetMultiReserveTime(products []map[string]interface{}) ([]Rese
 	req := s.client.R()
 	req.Header = s.buildHeader()
 	req.SetBody(strings.NewReader(params.Encode()))
-	resp, err := s.execute(context.Background(), req, http.MethodPost, urlPath)
+	resp, err := s.execute(ctx, req, http.MethodPost, urlPath, maxRetryCount)
 	if err != nil {
 		return nil, err
 	}

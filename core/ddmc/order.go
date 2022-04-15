@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package ddmc
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func (s *Session) CheckOrder(cartData map[string]interface{}, reserveTimes []ReserveTime) (map[string]interface{}, error) {
+func (s *Session) CheckOrder(ctx context.Context, cartData map[string]interface{}, reserveTimes []ReserveTime) (map[string]interface{}, error) {
 	urlPath := "https://maicai.api.ddxq.mobi/order/checkOrder"
 
 	packagesInfo := make(map[string]interface{})
@@ -58,7 +58,7 @@ func (s *Session) CheckOrder(cartData map[string]interface{}, reserveTimes []Res
 	req := s.client.R()
 	req.Header = s.buildHeader()
 	req.SetBody(strings.NewReader(params.Encode()))
-	resp, err := s.execute(context.TODO(), req, http.MethodPost, urlPath)
+	resp, err := s.execute(ctx, req, http.MethodPost, urlPath, maxRetryCount)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +147,6 @@ func (s *Session) CreateOrder(ctx context.Context, cartData map[string]interface
 	req := s.client.R()
 	req.Header = s.buildHeader()
 	req.SetBody(strings.NewReader(params.Encode()))
-	_, err = s.execute(ctx, req, http.MethodPost, urlPath)
+	_, err = s.execute(ctx, req, http.MethodPost, urlPath, maxRetryCount)
 	return err
 }

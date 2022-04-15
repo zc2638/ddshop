@@ -12,19 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package regular
 
 type Config struct {
-	Cookie   string       `json:"cookie"`
-	Interval int64        `json:"interval"`
-	PayType  string       `json:"payType"`
-	BarkKey  string       `json:"barkKey"`
-	Periods  []TimePeriod `json:"periods"`
+	SuccessInterval int      `json:"success_interval"` // 执行成功 再次执行的间隔时间(ms), -1为停止继续执行
+	FailInterval    int      `json:"fail_interval"`    // 执行失败 再次执行的间隔时间(ms), -1为停止继续执行
+	Periods         []Period `json:"periods"`          // 执行周期
 }
 
-type TimePeriod struct {
-	Start string `json:"start"`
-	End   string `json:"end"`
+type Period struct {
+	Start string `json:"start"` // 开始时间, 00:00
+	End   string `json:"end"`   // 结束时间, 23:59
 
 	startHour   int
 	startMinute int

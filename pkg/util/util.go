@@ -12,17 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package util
 
-type Error string
-
-func (e Error) Error() string {
-	return string(e)
+func LoopRun(num int, f func()) {
+	for i := 0; i < num; i++ {
+		f()
+	}
 }
-
-const (
-	ErrorOutPeriod = Error("当前时间段未抢到")
-
-	ErrorNoValidProduct = Error("无有效商品")
-	ErrorNoReserveTime  = Error("无可预约时间段")
-)
