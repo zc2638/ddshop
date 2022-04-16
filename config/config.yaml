@@ -1,3 +1,11 @@
+telegram:
+  # 参见这篇教程 https://longnight.github.io/2018/12/12/Telegram-Bot-notifications 配置token chaite
+  token: "**09724:AAEW***KhR**"
+  chat_id: "89***381"
+  # 配置 抢菜成功自定义消息
+  content: "搞快点,速来叮咚买菜小程序付钱!"
+  title: "🔥我，秦始皇，打钱"
+
 bark:
   key: ""               # Bark 通知推送的 Key
 push_plus:

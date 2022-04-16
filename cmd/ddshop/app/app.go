@@ -31,6 +31,7 @@ import (
 )
 
 type Config struct {
+	Telegram notice.TelegramBotConf `json:"telegram"`
 	Bark     notice.BarkConfig     `json:"bark"`
 	PushPlus notice.PushPlusConfig `json:"push_plus"`
 	Regular  regular.Config        `json:"regular"`
@@ -84,9 +85,10 @@ func NewRootCommand() *cobra.Command {
 			}
 
 			bark := notice.NewBark(&cfg.Bark)
+			telegram := notice.NewTelegramBot(&cfg.Telegram)
 			pushPlus := notice.NewPushPlus(&cfg.PushPlus)
 			music := notice.NewMusic(asserts.NoticeMP3, 180)
-			noticeIns := notice.New(notice.NewLog(), bark, pushPlus, music)
+			noticeIns := notice.New(notice.NewLog(), bark, pushPlus, music, telegram)
 
 			session, err := ddmc.NewSession(&cfg.DDMC, noticeIns)
 			if err != nil {
