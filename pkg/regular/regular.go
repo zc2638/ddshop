@@ -127,7 +127,8 @@ func (e *Engine) run(ctx context.Context, task TaskInterface) error {
 			if e.cfg.FailInterval < 0 {
 				return err
 			}
-			logrus.Errorf("将在 %dms 后继续执行，执行出错: %v", e.cfg.FailInterval, err)
+			logrus.Errorf("执行出错: %v", err)
+			logrus.Warningf("将在 %dms 后继续执行", e.cfg.FailInterval)
 			fmt.Println()
 			time.Sleep(time.Duration(e.cfg.FailInterval) * time.Millisecond)
 			continue
@@ -136,7 +137,7 @@ func (e *Engine) run(ctx context.Context, task TaskInterface) error {
 		if e.cfg.SuccessInterval < 0 {
 			return nil
 		}
-		logrus.Infof("将在 %dms 后继续执行，执行成功", e.cfg.SuccessInterval)
+		logrus.Infof("执行成功, 将在 %dms 后继续执行", e.cfg.SuccessInterval)
 		time.Sleep(time.Duration(e.cfg.SuccessInterval) * time.Millisecond)
 	}
 }

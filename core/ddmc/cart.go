@@ -35,7 +35,7 @@ func (s *Session) CartAllCheck(ctx context.Context) error {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	_, err = s.execute(ctx, req, http.MethodGet, urlPath, maxRetryCount)
+	_, err = s.execute(ctx, req, http.MethodGet, urlPath, s.cfg.RetryCount)
 	return err
 }
 
@@ -53,7 +53,7 @@ func (s *Session) GetCart(ctx context.Context) (map[string]interface{}, error) {
 
 	req := s.client.R()
 	req.Header = s.buildHeader()
-	resp, err := s.execute(ctx, req, http.MethodGet, urlPath, maxRetryCount)
+	resp, err := s.execute(ctx, req, http.MethodGet, urlPath, s.cfg.RetryCount)
 	if err != nil {
 		return nil, err
 	}

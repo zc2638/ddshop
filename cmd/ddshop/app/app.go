@@ -52,9 +52,10 @@ func (o *Option) Config() *Config {
 			FailInterval:    100,
 		},
 		DDMC: ddmc.Config{
-			Cookie:   o.Cookie,
-			Interval: o.Interval,
-			PayType:  o.PayType,
+			Cookie:     o.Cookie,
+			PayType:    o.PayType,
+			Interval:   o.Interval,
+			RetryCount: 100,
 		},
 		Bark: notice.BarkConfig{
 			Key: o.BarkKey,

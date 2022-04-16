@@ -15,8 +15,9 @@
 package ddmc
 
 type Config struct {
-	Cookie   string `json:"cookie"`
-	Interval int64  `json:"interval"`
-	PayType  string `json:"payType"`
-	Channel  int    `json:"channel"`
+	Cookie     string `json:"cookie"`
+	PayType    string `json:"pay_type"`
+	Channel    int    `json:"channel"`
+	Interval   int64  `json:"interval"`
+	RetryCount int    `json:"retry_count"`
 }

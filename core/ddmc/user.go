@@ -100,7 +100,7 @@ func (s *Session) GetUser() error {
 
 	req := s.client.R()
 	req.SetHeader("Host", "sunquan.api.ddxq.mobi")
-	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath, maxRetryCount)
+	resp, err := s.execute(context.Background(), req, http.MethodGet, urlPath, s.cfg.RetryCount)
 	if err != nil {
 		return err
 	}

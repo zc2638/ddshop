@@ -58,7 +58,7 @@ func (s *Session) CheckOrder(ctx context.Context, cartData map[string]interface{
 	req := s.client.R()
 	req.Header = s.buildHeader()
 	req.SetBody(strings.NewReader(params.Encode()))
-	resp, err := s.execute(ctx, req, http.MethodPost, urlPath, maxRetryCount)
+	resp, err := s.execute(ctx, req, http.MethodPost, urlPath, s.cfg.RetryCount)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +147,6 @@ func (s *Session) CreateOrder(ctx context.Context, cartData map[string]interface
 	req := s.client.R()
 	req.Header = s.buildHeader()
 	req.SetBody(strings.NewReader(params.Encode()))
-	_, err = s.execute(ctx, req, http.MethodPost, urlPath, maxRetryCount)
+	_, err = s.execute(ctx, req, http.MethodPost, urlPath, s.cfg.RetryCount)
 	return err
 }

@@ -46,7 +46,7 @@ func (s *Session) GetMultiReserveTime(ctx context.Context, products []map[string
 	req := s.client.R()
 	req.Header = s.buildHeader()
 	req.SetBody(strings.NewReader(params.Encode()))
-	resp, err := s.execute(ctx, req, http.MethodPost, urlPath, maxRetryCount)
+	resp, err := s.execute(ctx, req, http.MethodPost, urlPath, s.cfg.RetryCount)
 	if err != nil {
 		return nil, err
 	}

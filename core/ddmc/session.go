@@ -25,19 +25,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zc2638/ddshop/pkg/notice"
-
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
+
+	"github.com/zc2638/ddshop/pkg/notice"
 )
 
 const maxRetryCount = 100
 
 var (
-	ErrorNoValidProduct = errors.New("无有效商品")
-	ErrorNoReserveTime  = errors.New("无可预约时间段")
+	ErrorNoValidProduct     = errors.New("无有效商品")
+	ErrorNoReserveTime      = errors.New("无可预约时间段")
+	ErrorOutStock           = errors.New("部分商品已缺货")
+	ErrorProductChange      = errors.New("商品信息发生变化")
+	ErrorReserveTimeExpired = errors.New("送达时间已失效")
 )
 
 func NewSession(cfg *Config, noticeIns notice.Interface) (*Session, error) {
@@ -69,8 +72,6 @@ func NewSession(cfg *Config, noticeIns notice.Interface) (*Session, error) {
 		cfg:       cfg,
 		noticeIns: noticeIns,
 		client:    client,
-		successCh: make(chan struct{}, 1),
-		stopCh:    make(chan struct{}, 1),
 
 		apiVersion:  "9.49.2",
 		appVersion:  "2.82.0",
@@ -91,8 +92,6 @@ type Session struct {
 	cfg       *Config
 	noticeIns notice.Interface
 	client    *resty.Client
-	successCh chan struct{}
-	stopCh    chan struct{}
 
 	channel     string
 	apiVersion  string
@@ -214,19 +213,30 @@ func (s *Session) execute(ctx context.Context, request *resty.Request, method, u
 		return resp, nil
 	case -3000:
 		msg := result.Get("msg").Str
-		logrus.Warningf("当前人多拥挤(%v): %s", code, msg)
-	case -3001, -3100: // -3001创建订单, -3100检查订单
-		msg := result.Get("tips.limitMsg").Str
-		if count <= 0 {
-			return nil, fmt.Errorf("当前拥挤(%v): %s", code, msg)
+		if count == 0 {
+			return nil, fmt.Errorf("当前人多拥挤(%v): %s", code, msg)
 		}
 		logrus.Warningf("将在 %dms 后重试, 当前人多拥挤(%v): %s", s.cfg.Interval, code, msg)
-		time.Sleep(time.Duration(s.cfg.Interval) * time.Millisecond)
-	default:
-		if count <= 0 {
-			return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
+	case -3001, -3100: // -3001创建订单, -3100检查订单
+		msg := result.Get("tips.limitMsg").Str
+		if count == 0 {
+			return nil, fmt.Errorf("当前拥挤(%v): %s", code, msg)
 		}
-		logrus.Warningf("尝试次数: %d, 无法识别的状态码: %v", count, resp.String())
+
+		interval := int64(result.Get("tips.duration").Num)
+		if interval == 0 {
+			interval = s.cfg.Interval
+		}
+		logrus.Warningf("将在 %dms 后重试, 当前人多拥挤(%v): %s", interval, code, msg)
+		time.Sleep(time.Duration(interval) * time.Millisecond)
+	case 5001:
+		return nil, ErrorOutStock
+	case 5003:
+		return nil, ErrorProductChange
+	case 5004:
+		return nil, ErrorReserveTimeExpired
+	default:
+		return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
 	}
 	count--
 	return s.execute(nil, request, method, url, count)
