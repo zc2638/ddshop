@@ -30,7 +30,14 @@ type Interface interface {
 }
 
 func New(engines ...Engine) Interface {
-	return &notice{engines: engines}
+	es := make([]Engine, 0, len(engines))
+	for _, e := range engines {
+		if e == nil {
+			continue
+		}
+		es = append(es, e)
+	}
+	return &notice{engines: es}
 }
 
 type notice struct {

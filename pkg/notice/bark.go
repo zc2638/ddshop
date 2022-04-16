@@ -29,6 +29,9 @@ type BarkConfig struct {
 }
 
 func NewBark(cfg *BarkConfig) Engine {
+	if cfg.Key == "" {
+		return nil
+	}
 	return &bark{key: cfg.Key}
 }
 

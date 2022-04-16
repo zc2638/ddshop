@@ -19,26 +19,22 @@ import (
 	"errors"
 	"os"
 
-	"github.com/zc2638/ddshop/asserts"
-
-	"github.com/zc2638/ddshop/pkg/notice"
-
-	"github.com/zc2638/ddshop/pkg/regular"
-
-	"github.com/zc2638/ddshop/core/ddmc"
-
+	"github.com/pkgms/go/server"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/pkgms/go/server"
-
-	"github.com/spf13/cobra"
+	"github.com/zc2638/ddshop/asserts"
+	"github.com/zc2638/ddshop/core/ddmc"
+	"github.com/zc2638/ddshop/pkg/notice"
+	"github.com/zc2638/ddshop/pkg/regular"
 )
 
 type Config struct {
-	Bark    notice.BarkConfig `json:"bark"`
-	Regular regular.Config    `json:"regular"`
-	DDMC    ddmc.Config       `json:"ddmc"`
+	Bark     notice.BarkConfig     `json:"bark"`
+	PushPlus notice.PushPlusConfig `json:"push_plus"`
+	Regular  regular.Config        `json:"regular"`
+	DDMC     ddmc.Config           `json:"ddmc"`
 }
 
 type Option struct {
@@ -87,8 +83,9 @@ func NewRootCommand() *cobra.Command {
 			}
 
 			bark := notice.NewBark(&cfg.Bark)
+			pushPlus := notice.NewPushPlus(&cfg.PushPlus)
 			music := notice.NewMusic(asserts.NoticeMP3, 180)
-			noticeIns := notice.New(notice.NewLog(), bark, music)
+			noticeIns := notice.New(notice.NewLog(), bark, pushPlus, music)
 
 			session, err := ddmc.NewSession(&cfg.DDMC, noticeIns)
 			if err != nil {
