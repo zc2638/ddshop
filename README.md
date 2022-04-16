@@ -58,6 +58,7 @@ docker run --name ddshop -it -v <custom-config-dir>:/work/config zc2638/ddshop
 
 ## 抓包
 [Charles抓包教程](https://www.jianshu.com/p/ff85b3dac157)  
+[Charles 抓包 PC端微信小程序](https://blog.csdn.net/z2181745/article/details/123002569)  
 微信小程序支持PC版，所以只需要安装抓包程序，打开 `叮咚买菜微信小程序`，直接进行抓包即可，无须进行手机配置。
 
 ## 声明
