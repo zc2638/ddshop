@@ -21,37 +21,43 @@ go install github.com/zc2638/ddshop/cmd/ddshop@latest
 ```
 
 ## 使用
-### 命令行工具
-1. 使用抓包工具获取 叮咚买菜上的用户 `cookie` (DDXQSESSID)
-2. 使用获取到的 `cookie` 替换下面命令中的 `<custom-cookie>`
-```shell
-ddshop --cookie <custom-cookie>
-```
 
-使用配置文件，需要先创建配置文件（可参考 [配置详情](./config/config.yaml)）  
-将 `<custom-config-path>` 替换为实际的配置文件路径，例如：`config/config.yaml`
+1. 创建配置文件`config.yaml`
+2. 修改配置文件中的配置项
+3. 执行程序
+
+### 配置
+点击查看 [完整配置](./config/config.yaml)
+```yaml
+bark:
+  key: ""               # Bark 通知推送的 Key
+push_plus:
+  token: ""             # Push Plus 通知推送的 Token
+  
+# 自动任务的配置，不配置 periods 将持续执行
+regular:
+  success_interval: 100 # 执行成功 再次执行的间隔时间(ms), -1为停止继续执行
+  fail_interval: 100    # 执行失败 再次执行的间隔时间(ms), -1为停止继续执行
+  periods: # 执行周期
+    - start: "05:59"
+      end: "06:10"
+    - start: "08:29"
+      end: "08:35"
+
+# 叮咚买菜的配置
+ddmc:
+  cookie: ""         # 使用抓包工具获取 叮咚买菜上的用户 `cookie` (DDXQSESSID)
+  interval: 100      # 连续发起请求间隔时间(ms)
+  payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat
+  channel: 3         # 通道: app => 3, 微信小程序 => 4
+```
+### 命令行工具
+执行以下命令前，将 `<custom-config-path>` 替换为实际的配置文件路径，例如：`config/config.yaml`
 ```shell
 ddshop -c <custom-config-path>
 ```
-
-支持预设置支付方式  
-默认支持的值：支付宝、alipay、微信、wechat
-```shell
-ddshop --cookie <custom-cookie> --pay-type wechat
-```
-
-Bark推送提醒 [点击查看详情](https://github.com/Finb/Bark)  
-使用获取到的 `bark id` 替换下面命令中的 `<custom-bark-key>`
-```shell
-ddshop --cookie <custom-cookie> --bark-key <custom-bark-key>
-```
 ### Docker
-环境变量
-```shell
-docker run --name ddshop -it -e DDSHOP_COOKIE=<custom-cookie> -e DDSHOP_PAYTYPE=wechat -e DDSHOP_BARKKEY= zc2638/ddshop 
-```
-配置文件方式，将 `<custom-config-dir>` 替换成宿主机存放配置文件的目录  
-详细配置项请点击 [配置详情](./config/config.yaml)
+执行以下命令前，将 `<custom-config-dir>` 替换成宿主机存放配置文件的目录  
 ```shell
 docker run --name ddshop -it -v <custom-config-dir>:/work/config zc2638/ddshop 
 ```
