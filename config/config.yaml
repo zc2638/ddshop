@@ -12,3 +12,4 @@ ddmc:
   cookie: ""
   interval: 100      # 连续发起请求间隔时间(ms)
   payType: "wechat"  # 支付方式：支付宝、alipay、微信、wechat
+  channel: 3         # 通道: app => 3, 微信小程序 => 4

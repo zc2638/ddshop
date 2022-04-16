@@ -62,6 +62,9 @@ func NewSession(cfg *Config, noticeIns notice.Interface) (*Session, error) {
 	client := resty.New()
 	client.Header = header
 
+	if cfg.Channel != 3 && cfg.Channel != 4 {
+		cfg.Channel = 4
+	}
 	sess := &Session{
 		cfg:       cfg,
 		noticeIns: noticeIns,
@@ -72,7 +75,7 @@ func NewSession(cfg *Config, noticeIns notice.Interface) (*Session, error) {
 		apiVersion:  "9.49.2",
 		appVersion:  "2.82.0",
 		channel:     "applet",
-		appClientID: "4",
+		appClientID: strconv.Itoa(cfg.Channel),
 	}
 
 	if err := sess.GetUser(); err != nil {

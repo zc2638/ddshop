@@ -18,4 +18,5 @@ type Config struct {
 	Cookie   string `json:"cookie"`
 	Interval int64  `json:"interval"`
 	PayType  string `json:"payType"`
+	Channel  int    `json:"channel"`
 }
