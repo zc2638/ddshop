@@ -1,5 +1,6 @@
 bark:
-  key: ""               # Bark 通知推送的 Key
+  server: "https://api.day.app" # 自定义 Bark Server 地址, 不填默认为 https://api.day.app
+  key: ""                       # Bark 通知推送的 Key
 push_plus:
   token: ""             # Push Plus 通知推送的 Token
 regular:

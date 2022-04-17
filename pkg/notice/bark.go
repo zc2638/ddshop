@@ -20,23 +20,25 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"path"
 )
 
 const barkURL = "https://api.day.app/push"
 
 type BarkConfig struct {
-	Key string `json:"key"`
+	Server string `json:"server"`
+	Key    string `json:"key"`
 }
 
 func NewBark(cfg *BarkConfig) Engine {
 	if cfg.Key == "" {
 		return nil
 	}
-	return &bark{key: cfg.Key}
+	return &bark{cfg: cfg}
 }
 
 type bark struct {
-	key string
+	cfg *BarkConfig
 }
 
 func (b *bark) Name() string {
@@ -45,7 +47,7 @@ func (b *bark) Name() string {
 
 func (b *bark) Send(title, body string) error {
 	data := &barkData{
-		DeviceKey: b.key,
+		DeviceKey: b.cfg.Key,
 		Title:     title,
 		Body:      body,
 		Sound:     "alarm.caf",
@@ -55,7 +57,11 @@ func (b *bark) Send(title, body string) error {
 		return err
 	}
 
-	resp, err := http.Post(barkURL, "application/json; charset=utf-8", bytes.NewReader(bs))
+	uri := barkURL
+	if b.cfg.Server != "" {
+		uri = path.Join(b.cfg.Server, "push")
+	}
+	resp, err := http.Post(uri, "application/json; charset=utf-8", bytes.NewReader(bs))
 	if err != nil {
 		return err
 	}
