@@ -12,44 +12,51 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package notice
+package music
 
 import (
 	"bytes"
-	"io"
+	"runtime"
 	"time"
 
-	"github.com/faiface/beep/mp3"
-	"github.com/faiface/beep/speaker"
+	"github.com/hajimehoshi/go-mp3"
+	"github.com/hajimehoshi/oto/v2"
 )
 
-func NewMusic(b []byte, sec int) Engine {
-	return &music{b: b, sec: sec}
+func NewMP3(b []byte, sec int) (*MP3, error) {
+	decoder, err := mp3.NewDecoder(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	return &MP3{
+		decoder: decoder,
+		sec:     sec,
+	}, nil
 }
 
-type music struct {
-	b   []byte
-	sec int
+type MP3 struct {
+	decoder *mp3.Decoder
+	sec     int
 }
 
-func (m *music) Name() string {
-	return "music"
-}
-
-func (m *music) Send(title, body string) error {
-	rc := io.NopCloser(bytes.NewReader(m.b))
-	streamer, format, err := mp3.Decode(rc)
+func (m *MP3) Play() error {
+	c, _, err := oto.NewContext(m.decoder.SampleRate(), 2, 2)
 	if err != nil {
 		return err
 	}
-	defer streamer.Close()
-
-	if err := speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10)); err != nil {
-		return err
-	}
-	speaker.Play(streamer)
+	player := c.NewPlayer(m.decoder)
+	player.Play()
 
 	// 异步放歌，需要等待
 	time.Sleep(time.Duration(m.sec) * time.Second)
+	runtime.KeepAlive(player)
 	return nil
+}
+
+func (m *MP3) Name() string {
+	return "Music"
+}
+
+func (m *MP3) Send(_, _ string) error {
+	return m.Play()
 }

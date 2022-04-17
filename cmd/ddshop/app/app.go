@@ -27,6 +27,7 @@ import (
 	"github.com/zc2638/ddshop/asserts"
 	"github.com/zc2638/ddshop/core/ddmc"
 	"github.com/zc2638/ddshop/pkg/notice"
+	"github.com/zc2638/ddshop/pkg/notice/music"
 	"github.com/zc2638/ddshop/pkg/regular"
 )
 
@@ -83,10 +84,13 @@ func NewRootCommand() *cobra.Command {
 				return errors.New("请输入用户Cookie.\n你可以执行此命令 `ddshop --cookie xxx` 或者 `DDSHOP_COOKIE=xxx ddshop`")
 			}
 
+			mp3Entry, err := music.NewMP3(asserts.NoticeMP3, 180)
+			if err != nil {
+				logrus.Warning("提醒歌曲解析失败: %v", err)
+			}
 			bark := notice.NewBark(&cfg.Bark)
 			pushPlus := notice.NewPushPlus(&cfg.PushPlus)
-			music := notice.NewMusic(asserts.NoticeMP3, 180)
-			noticeIns := notice.New(notice.NewLog(), bark, pushPlus, music)
+			noticeIns := notice.New(notice.NewLog(), bark, pushPlus, mp3Entry)
 
 			session, err := ddmc.NewSession(&cfg.DDMC, noticeIns)
 			if err != nil {

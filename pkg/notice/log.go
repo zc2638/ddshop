@@ -27,7 +27,7 @@ func NewLog() Engine {
 type log struct{}
 
 func (l *log) Name() string {
-	return "log"
+	return "Log"
 }
 
 func (l *log) Send(title, body string) error {

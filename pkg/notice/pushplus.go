@@ -46,7 +46,7 @@ type pushPlus struct {
 }
 
 func (p *pushPlus) Name() string {
-	return "pushplus"
+	return "PushPlus"
 }
 
 func (p *pushPlus) Send(title, body string) error {
