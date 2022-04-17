@@ -13,8 +13,3 @@
 // limitations under the License.
 
 package core
-
-type Interface interface {
-	Start() error
-	Stop()
-}

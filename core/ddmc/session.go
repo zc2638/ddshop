@@ -33,8 +33,6 @@ import (
 	"github.com/zc2638/ddshop/pkg/notice"
 )
 
-const maxRetryCount = 100
-
 var (
 	ErrorNoValidProduct     = errors.New("无有效商品")
 	ErrorNoReserveTime      = errors.New("无可预约时间段")
@@ -101,7 +99,10 @@ type Session struct {
 	UserID  string
 	PayType int64
 	Address *AddressItem
-	Reserve ReserveTime
+
+	cartData         map[string]interface{}
+	multiReserveTime []ReserveTime
+	checkOrderData   map[string]interface{}
 }
 
 func (s *Session) Run(ctx context.Context) error {
@@ -124,74 +125,61 @@ func (s *Session) Run(ctx context.Context) error {
 }
 
 func (s *Session) run(ctx context.Context) error {
-	logrus.Info("=====> 获取购物车中有效商品")
-
-	if err := s.CartAllCheck(ctx); err != nil {
-		return fmt.Errorf("全选购物车商品失败: %v", err)
+	if s.cartData == nil {
+		logrus.Info("=====> 获取购物车中有效商品")
+		if err := s.CartAllCheck(ctx); err != nil {
+			return fmt.Errorf("全选购物车商品失败: %v", err)
+		}
+		cartData, err := s.GetCart(ctx)
+		if err != nil {
+			return err
+		}
+		s.cartData = cartData
 	}
-	cartData, err := s.GetCart(ctx)
-	if err != nil {
-		return err
-	}
 
-	products := cartData["products"].([]map[string]interface{})
+	products := s.cartData["products"].([]map[string]interface{})
 	for k, v := range products {
 		logrus.Infof("[%v] %s 数量：%v 总价：%s", k, v["product_name"], v["count"], v["total_price"])
 	}
 
-	for {
+	if len(s.multiReserveTime) == 0 {
 		logrus.Info("=====> 获取可预约时间")
 		multiReserveTime, err := s.GetMultiReserveTime(ctx, products)
 		if err != nil {
 			return fmt.Errorf("获取可预约时间失败: %v", err)
 		}
-
 		if len(multiReserveTime) == 0 {
 			return ErrorNoReserveTime
 		}
 		logrus.Infof("发现可用的配送时段!")
+		s.multiReserveTime = multiReserveTime
+	}
+	reserveTime := s.multiReserveTime[0]
 
+	if s.checkOrderData == nil {
 		logrus.Info("=====> 生成订单信息")
-		checkOrderData, err := s.CheckOrder(ctx, cartData, multiReserveTime)
+		checkOrderData, err := s.CheckOrder(ctx, s.cartData, &reserveTime)
 		if err != nil {
 			return fmt.Errorf("检查订单失败: %v", err)
 		}
-		logrus.Infof("订单总金额：%v\n", checkOrderData["price"])
-
-		sess := s.Clone()
-		sess.SetReserve(multiReserveTime[0])
-
-		startTime := time.Unix(int64(sess.Reserve.StartTimestamp), 0).Format("2006/01/02 15:04:05")
-		endTime := time.Unix(int64(sess.Reserve.EndTimestamp), 0).Format("2006/01/02 15:04:05")
-		timeRange := startTime + "——" + endTime
-		logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
-		if err := sess.CreateOrder(context.Background(), cartData, checkOrderData); err != nil {
-			logrus.Errorf("提交订单(%s)失败: %v", timeRange, err)
-			return err
-		}
-
-		if err := s.noticeIns.Notice("抢菜成功", "叮咚买菜 抢菜成功，请尽快支付！"); err != nil {
-			logrus.Warningf("通知失败: %v", err)
-		}
-		return nil
+		s.checkOrderData = checkOrderData
+		logrus.Infof("订单总金额：%v\n", s.checkOrderData["price"])
 	}
-}
 
-func (s *Session) Clone() *Session {
-	return &Session{
-		cfg:    s.cfg,
-		client: s.client,
+	startTime := time.Unix(int64(reserveTime.StartTimestamp), 0).Format("2006/01/02 15:04:05")
+	endTime := time.Unix(int64(reserveTime.EndTimestamp), 0).Format("2006/01/02 15:04:05")
+	timeRange := startTime + "——" + endTime
 
-		channel:     s.channel,
-		apiVersion:  s.apiVersion,
-		appVersion:  s.appVersion,
-		appClientID: s.appClientID,
-
-		UserID:  s.UserID,
-		Address: s.Address,
-		PayType: s.PayType,
-		Reserve: s.Reserve,
+	logrus.Infof("=====> 提交订单中, 预约时间段(%s)", timeRange)
+	if err := s.CreateOrder(context.Background(), s.cartData, s.checkOrderData, &reserveTime); err != nil {
+		logrus.Errorf("提交订单(%s)失败: %v", timeRange, err)
+		return err
 	}
+
+	if err := s.noticeIns.Notice("抢菜成功", "叮咚买菜 抢菜成功，请尽快支付！"); err != nil {
+		logrus.Warningf("通知失败: %v", err)
+	}
+	return nil
 }
 
 func (s *Session) execute(ctx context.Context, request *resty.Request, method, url string, count int) (*resty.Response, error) {
@@ -230,12 +218,18 @@ func (s *Session) execute(ctx context.Context, request *resty.Request, method, u
 		logrus.Warningf("将在 %dms 后重试, 当前人多拥挤(%v): %s", interval, code, msg)
 		time.Sleep(time.Duration(interval) * time.Millisecond)
 	case 5001:
+		s.cartData = nil
+		s.checkOrderData = nil
 		return nil, ErrorOutStock
 	case 5003:
+		s.cartData = nil
+		s.checkOrderData = nil
 		return nil, ErrorProductChange
 	case 5004:
+		s.multiReserveTime = nil
 		return nil, ErrorReserveTimeExpired
 	default:
+		s.checkOrderData = nil
 		return nil, fmt.Errorf("无法识别的状态码: %v", resp.String())
 	}
 	count--
@@ -287,10 +281,6 @@ func (s *Session) buildURLParams(needAddress bool) url.Values {
 	params.Add("nars", "")
 	params.Add("sesi", "")
 	return params
-}
-
-func (s *Session) SetReserve(reserve ReserveTime) {
-	s.Reserve = reserve
 }
 
 func (s *Session) Choose() error {

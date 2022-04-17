@@ -25,7 +25,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func (s *Session) CheckOrder(ctx context.Context, cartData map[string]interface{}, reserveTimes []ReserveTime) (map[string]interface{}, error) {
+func (s *Session) CheckOrder(ctx context.Context, cartData map[string]interface{}, reserveTime *ReserveTime) (map[string]interface{}, error) {
 	urlPath := "https://maicai.api.ddxq.mobi/order/checkOrder"
 
 	packagesInfo := make(map[string]interface{})
@@ -33,8 +33,8 @@ func (s *Session) CheckOrder(ctx context.Context, cartData map[string]interface{
 		packagesInfo[k] = v
 	}
 	packagesInfo["reserved_time"] = map[string]interface{}{
-		"reserved_time_start": reserveTimes[0].StartTimestamp,
-		"reserved_time_end":   reserveTimes[0].EndTimestamp,
+		"reserved_time_start": reserveTime.StartTimestamp,
+		"reserved_time_end":   reserveTime.EndTimestamp,
 	}
 	packagesJson, err := json.Marshal([]interface{}{packagesInfo})
 	if err != nil {
@@ -74,12 +74,17 @@ func (s *Session) CheckOrder(ctx context.Context, cartData map[string]interface{
 	return out, nil
 }
 
-func (s *Session) CreateOrder(ctx context.Context, cartData map[string]interface{}, checkOrderData map[string]interface{}) error {
+func (s *Session) CreateOrder(
+	ctx context.Context,
+	cartData map[string]interface{},
+	checkOrderData map[string]interface{},
+	reserveTime *ReserveTime,
+) error {
 	urlPath := "https://maicai.api.ddxq.mobi/order/addNewOrder"
 
 	paymentOrder := map[string]interface{}{
-		"reserved_time_start":    s.Reserve.StartTimestamp,
-		"reserved_time_end":      s.Reserve.EndTimestamp,
+		"reserved_time_start":    reserveTime.StartTimestamp,
+		"reserved_time_end":      reserveTime.EndTimestamp,
 		"parent_order_sign":      cartData["parent_order_sign"],
 		"address_id":             s.Address.Id,
 		"pay_type":               s.PayType,
@@ -96,8 +101,8 @@ func (s *Session) CreateOrder(ctx context.Context, cartData map[string]interface
 	}
 
 	packages := map[string]interface{}{
-		"reserved_time_start":       s.Reserve.StartTimestamp,
-		"reserved_time_end":         s.Reserve.EndTimestamp,
+		"reserved_time_start":       reserveTime.StartTimestamp,
+		"reserved_time_end":         reserveTime.EndTimestamp,
 		"products":                  cartData["products"],
 		"package_type":              cartData["package_type"],
 		"package_id":                cartData["package_id"],
